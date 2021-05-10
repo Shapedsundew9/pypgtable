@@ -1,0 +1,98 @@
+{
+    "database": {
+        "required": true,
+        "type": "dict",
+        "check_with": "valid_database_config",
+        "meta": {
+            "description": "Definition of the database location and user to access the table."
+        }
+
+    },
+    "table": {
+        "required": true,
+        "type": "string",
+        "minlength": 1,
+        "maxlength": 64,
+        "regex": "[a-zA-Z][a-zA-Z0-9_-]*",
+        "meta": {
+            "description": "The name of the table."
+        }
+    },
+    "schema": {
+        "required": true,
+        "type": "dict",
+        "minlength": 1,
+        "maxlength": 1600,
+        "keysrules": {
+            "type": "string",
+            "minlength": 1,
+            "maxlength": 64,
+            "regex": "[a-zA-Z][a-zA-Z0-9_-]*"
+        },
+        "valuesrules": {
+            "type": "dict",
+            "check_with": "valid_raw_table_column_config"
+        },
+        "meta": {
+            "description": "Table schema definition."
+        }
+    },
+    "ptr_map": {
+        "type": "dict",
+        "check_with": "valid_ptr_map",
+        "meta": {
+            "description": "Defines relationships between fields for tables consisting of graph node rows."
+        }
+    },
+    "format_file_folder": {
+        "type": "string",
+        "minlength": 1,
+        "maxlength": 1024,
+        "check_with": "valid_file_folder",
+        "meta": {
+            "description": "Folder to find the table schema validation schema."
+        }
+    },
+    "data_file_folder": {
+        "type": "string",
+        "minlength": 1,
+        "maxlength": 1024,
+        "check_with": "valid_file_folder",
+        "meta": {
+            "description": "Folder to find the data to populate the table on creation."
+        }
+    },
+    "format_file": {
+        "type": "string",
+        "minlength": 1,
+        "maxlength": 1024,
+        "required": true,
+        "check_with": "valid_format_file",
+        "dependencies": ["format_file_folder"],
+        "meta": {
+            "description": "Python Cerberus validation schema for the table data."
+        }
+    },
+    "data_files": {
+        "type": "list",
+        "schema": {
+            "type": "string",
+            "minlength": 1,
+            "maxlength": 1024,
+            "required": false
+        },
+        "check_with": "valid_data_files",
+        "default": [],
+        "dependencies": ["data_file_folder", "format_file"],
+        "meta": {
+            "description": "Data files used to populate the table on creation."
+        }
+    },
+    "validate": {
+        "type": "boolean",
+        "default": false,
+        "meta": {
+            "description": "Validate format file folder, format file, data files folder & datafiles. Increases start up time."
+        }
+    }
+}
