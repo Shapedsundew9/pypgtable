@@ -76,7 +76,7 @@ class raw_table():
 
     def __len__(self):
         """Return the number of entries in the table."""
-        return self._db_transaction((_TABLE_LEN_SQL.format(self._table),)).fetchone()[0]
+        return self._db_transaction((_TABLE_LEN_SQL.format(self._table),))[0].fetchone()[0]
 
 
     def __getitem__(self, pk_value):
@@ -90,7 +90,7 @@ class raw_table():
         -------
         (pyscopg2.cursor) with the query results.
         """
-        if self._primary_key is None: raise ProgrammingError
+        if self._primary_key is None: raise ValueError('SELECT row on primary key but no primary key defined!')
         return self.select(['{' + self._primary_key + '} = {_pk_value}', {'_pk_value': pk_value}]).fetchone()[0]
 
 
@@ -184,7 +184,7 @@ class raw_table():
             _logger.info(text_token({'I05003': {'table': self.config['table'], 
                 'dbname': self.config['database']['dbname'], 'backoff': backoff}}))
             sleep(backoff)
-        dbcur = self._db_transaction((_TABLE_DEFINITION_SQL.format(self._table),))
+        dbcur = self._db_transaction((_TABLE_DEFINITION_SQL.format(self._table),))[0]
         columns = tuple((column[0] for column in dbcur.fetchall()))
         unmatched_set = set(columns) - set(self.config['schema'].keys())
         #TODO: Could validate types & properties too.
@@ -201,7 +201,7 @@ class raw_table():
         -------
         (bool) True if the table exists else False.
         """
-        return self._db_transaction((_TABLE_EXISTS_SQL.format(self._table), )).fetchone()[0]
+        return self._db_transaction((_TABLE_EXISTS_SQL.format(self._table), ))[0].fetchone()[0]
 
 
     def _create_table(self):
@@ -238,8 +238,8 @@ class raw_table():
                 return self._table_definition()
             raise e
 
-        self._populate_table()
         self._create_indices()
+        self._populate_table()
         return self._table_definition()
 
 
@@ -247,7 +247,7 @@ class raw_table():
         """Create an index for columns that specify one."""
         for column, definition in filter(lambda x: 'index' in x[1], self.config['schema'].items()):
             sql_str =  _TABLE_INDEX_SQL.format(sql.Identifier(column + "_index"), self._table)
-            if 'type' in definition['index']: sql_str += sql.SQL(" USING ") + sql.Identifier(definition['index']['type'])
+            sql_str += sql.SQL(" USING ") + sql.Literal(definition['index'])
             sql_str += _TABLE_INDEX_COLUMN_SQL.format(sql.Identifier(column))
             _logger.info(text_token({'I05000': {'sql': self._sql_to_string(sql_str)}}))
             self._db_transaction((sql_str,), read=False)
@@ -265,10 +265,10 @@ class raw_table():
         
 
     def recursive_select(self, query_strs, literals={}, columns=None, repeatable=False):
-        columns = self._columns if columns is None else set(columns) | self._ptr_map_columns
+        columns = self._columns if columns is None else set(columns) | self._pm_columns
         columns = sql.SQL(', ').join(map(sql.Identifier, columns))
         format_dict = self._format_dict(literals)
-        sql_str_list = [_TABLE_RECURSIVE_SELECT.format(columns, self._table, sql.SQL(q).format(**format_dict), self._ptr_map_sql) for q in query_strs]
+        sql_str_list = [_TABLE_RECURSIVE_SELECT.format(columns, self._table, sql.SQL(q).format(**format_dict), self._pm_sql) for q in query_strs]
         return self._sql_queries_transaction(sql_str_list, columns, repeatable)
 
 
@@ -397,7 +397,6 @@ class raw_table():
                 schema_path = join(self.config['format_file_folder'], self.config['format_file'])
                 with open(schema_path, "r") as schema_file:
                     self._entry_validator = Validator(load(schema_file))
-            else:
-                return tuple((self._entry_validator(entry) for entry in entries))
+            return tuple((self._entry_validator(entry) for entry in entries))
         return (True,) * len(entries)
 

@@ -1,0 +1,22 @@
+{
+    "name": {
+        "type": "string"
+    },
+    "id": {
+        "type": "integer",
+        "required": true
+    },
+    "left": {
+        "type": "integer"
+    },
+    "right": {
+        "type": "integer"
+    },
+    "uid": {
+        "type": "integer",
+        "required": true
+    },
+    "metadata": {
+        "type": "list"
+    }
+}

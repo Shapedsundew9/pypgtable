@@ -12,8 +12,12 @@ _logger = get_logger(__file__, __name__)
 
 _SELECT_TABLE_EXISTS = "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ('test_table')"
 _SELECT_COLUMNS = "SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ('test_table')"
-_CREATE_TABLE = "CREATE TABLE ('test_table') (('node') VARCHAR NOT NULL, ('id') INTEGER NOT NULL, ('left') INTEGER NOT NULL, ('right') INTEGER NOT NULL)"
+_CREATE_TABLE = "CREATE TABLE ('test_table') (('node') VARCHAR, ('id') INTEGER NOT NULL PRIMARY KEY, ('left') INTEGER, ('right') INTEGER, ('uid') INTEGER NOT NULL UNIQUE, ('meta') INTEGER [] NOT NULL)"
 _TABLE_LEN = "SELECT COUNT(*) FROM ('test_table')"
+_CREATE_UNIQUE_INDEX = "CREATE INDEX ('uid_index') ON ('test_table') USING 'btree'(('uid'))"
+_CREATE_INDEX = "CREATE INDEX ('meta_index') ON ('test_table') USING 'btree'(('meta'))"
+_SELECT = "SELECT ('uid'), ('left'), ('right') FROM ('test_table') WHERE ('test_table.id') = 7"
+_RECURSIVE_SELECT = "WITH RECURSIVE rq AS (SELECT ('uid'), ('id'), ('left'), ('right') FROM ('test_table') WHERE ('test_table.id') = 7 UNION SELECT ('uid'), ('id'), ('left'), ('right') FROM ('test_table') t WHERE ('r.id')=('t.left') OR ('r.id')=('t.right')) SELECT * FROM rq"
 
 
 _MOCK_CONFIG = {
@@ -23,22 +27,41 @@ _MOCK_CONFIG = {
     'table': 'test_table',
     'schema': {
         'node': {
-            'type': 'VARCHAR'
+            'type': 'VARCHAR',
+            'null': True
         },
         'id': {
-            'type': 'INTEGER'
+            'type': 'INTEGER',
+            'primary_key': True
         },
         'left' : {
-            'type': 'INTEGER'
+            'type': 'INTEGER',
+            'null': True
         },
         'right' : {
-            'type': 'INTEGER'
+            'type': 'INTEGER',
+            'null': True
+        },
+        'uid' : {
+            'type': 'INTEGER',
+            'index': 'btree',
+            'unique': True
+        },
+        'meta' : {
+            'type': 'INTEGER',
+            'array': True,
+            'index': 'btree'
         }
     },
     'ptr_map': {
         'left': 'id',
         'right': 'id'
-    }
+    },
+    'format_file_folder': '../data',
+    'format_file': 'data_format.json',
+    'data_file_folder': '../data',
+    'data_files': ['data_values.json'],
+    'validate': True
 }
 
 
@@ -86,7 +109,7 @@ class _MOCK_CURSOR():
 
 
 def _MOCK_DB_TRANSACTION(self, sql_str_iter, read=True, repeatable=False):
-    return _MOCK_CURSOR((_MOCK_SQL_TO_STRING(None, sql_str) for sql_str in sql_str_iter))
+    return (_MOCK_CURSOR((_MOCK_SQL_TO_STRING(None, sql_str) for sql_str in sql_str_iter)),)
 
 
 def test_invalid_config():
@@ -107,7 +130,7 @@ def test_invalid_config():
 def test_table_exists(monkeypatch):
     """Validate a the SQL sequence when a table exists."""
     monkeypatch.setattr(raw_table, '_db_transaction', _MOCK_DB_TRANSACTION)
-    monkeypatch.setattr(sql.SQL, 'as_string', _MOCK_SQL_TO_STRING)
+    monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
     _MOCK_CURSOR.sql_history = []
     config = deepcopy(_MOCK_CONFIG)
     raw_table(config)
@@ -134,8 +157,9 @@ def test_table_does_not_exist(monkeypatch):
     _MOCK_CURSOR.sql_history = []
     config = deepcopy(_MOCK_CONFIG)
     raw_table(config)
-    assert len(_MOCK_CURSOR.sql_history) == 5
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _CREATE_TABLE, _TABLE_LEN, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS)):
+    assert len(_MOCK_CURSOR.sql_history) == 7
+    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _CREATE_TABLE, _CREATE_UNIQUE_INDEX,
+         _CREATE_INDEX, _TABLE_LEN, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS)):
         assert _MOCK_CURSOR.sql_history[i] == sql_str
 
 
@@ -158,7 +182,7 @@ def test_table_does_not_exist_duplicate(monkeypatch):
         error.pgcode = errors.DuplicateTable
         cursor = _MOCK_CURSOR(sql_str_tuple)
         if sql_str_tuple[0][0:13] == 'CREATE TABLE ': raise error
-        return cursor
+        return (cursor,)
     monkeypatch.setattr(_MOCK_CURSOR, 'fetchone', mock_fetchone)
     monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
     monkeypatch.setattr(raw_table, '_db_transaction', mock_db_transaction)
@@ -166,7 +190,6 @@ def test_table_does_not_exist_duplicate(monkeypatch):
     _MOCK_CURSOR.count = 0
     config = deepcopy(_MOCK_CONFIG)
     raw_table(config)
-    for s in _MOCK_CURSOR.sql_history: print(s)
     assert len(_MOCK_CURSOR.sql_history) == 4
     for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _CREATE_TABLE, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS)):
         assert _MOCK_CURSOR.sql_history[i] == sql_str
@@ -191,7 +214,7 @@ def test_table_does_not_exist_privilege(monkeypatch):
         error.pgcode = errors.InsufficientPrivilege
         cursor = _MOCK_CURSOR(sql_str_tuple)
         if sql_str_tuple[0][0:13] == 'CREATE TABLE ': raise error
-        return cursor
+        return (cursor,)
     monkeypatch.setattr(_MOCK_CURSOR, 'fetchone', mock_fetchone)
     monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
     monkeypatch.setattr(raw_table, '_db_transaction', mock_db_transaction)
@@ -207,7 +230,7 @@ def test_table_does_not_exist_privilege(monkeypatch):
 def test_table_does_not_exist_other(monkeypatch):
     """Validate a the SQL sequence when a table does not exist.
     
-    In this case creation fails with an unexpect exception.
+    In this case creation fails with an unexpected exception.
     """
     def mock_fetchone(self):
         if _MOCK_CURSOR.count == 0 and self._data[0][:15] == 'SELECT EXISTS (':
@@ -220,7 +243,7 @@ def test_table_does_not_exist_other(monkeypatch):
         sql_str_tuple = tuple((_MOCK_SQL_TO_STRING(None, sql_str) for sql_str in sql_str_iter))
         cursor = _MOCK_CURSOR(sql_str_tuple)
         if sql_str_tuple[0][0:13] == 'CREATE TABLE ': raise DatabaseError
-        return cursor
+        return (cursor,)
     monkeypatch.setattr(_MOCK_CURSOR, 'fetchone', mock_fetchone)
     monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
     monkeypatch.setattr(raw_table, '_db_transaction', mock_db_transaction)
@@ -237,12 +260,36 @@ def test_table_does_not_exist_other(monkeypatch):
 
 def test_valid_config_with_primary_key(monkeypatch):
     """Add a primary key to the _MOCK_CONFIG and make sure we get it back."""
-    monkeypatch.setattr(sql.SQL, 'as_string', _MOCK_SQL_TO_STRING)
+    monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
     monkeypatch.setattr(raw_table, '_db_transaction', _MOCK_DB_TRANSACTION)
     _MOCK_CURSOR.sql_history = []
     config = deepcopy(_MOCK_CONFIG)
-    config['schema']['id']['primary_key'] = True
     rt = raw_table(config)
     assert rt._primary_key == 'id'
 
 
+def test_select(monkeypatch):
+    """As it says on the tin."""
+    monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
+    monkeypatch.setattr(raw_table, '_db_transaction', _MOCK_DB_TRANSACTION)
+    _MOCK_CURSOR.sql_history = []
+    config = deepcopy(_MOCK_CONFIG)
+    rt = raw_table(config)
+    rt.select(['WHERE {id} = {seven}'], {'seven': 7}, columns=('uid', 'left', 'right'))
+    assert len(_MOCK_CURSOR.sql_history) == 4
+    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _SELECT)):
+        assert _MOCK_CURSOR.sql_history[i] == sql_str
+
+
+def test_recursive_select(monkeypatch):
+    """As it says on the tin."""
+    monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
+    monkeypatch.setattr(raw_table, '_db_transaction', _MOCK_DB_TRANSACTION)
+    _MOCK_CURSOR.sql_history = []
+    config = deepcopy(_MOCK_CONFIG)
+    rt = raw_table(config)
+    rt.recursive_select(['WHERE {id} = {seven}'], {'seven': 7}, columns=('uid', 'left', 'right'))
+    for s in _MOCK_CURSOR.sql_history: print(s)
+    assert len(_MOCK_CURSOR.sql_history) == 3
+    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _RECURSIVE_SELECT)):
+        assert _MOCK_CURSOR.sql_history[i] == sql_str

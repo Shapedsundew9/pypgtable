@@ -84,8 +84,8 @@ class _raw_table_config_validator(BaseValidator):
                 abspath = join(self.document['data_file_folder'], filename)
                 for datum in self._isjsonfile(field, abspath):
                     if not validator.validate(datum):
-                        self._error(field, "Datum in datafile is invalid.")
-
+                        for e in validator._errors: self._error(field, self.str_errors(e))
+                        print(validator._errors)
 
 with open(join(dirname(__file__), "formats/raw_table_config_format.json"), "r") as file_ptr:
     raw_table_config_validator = _raw_table_config_validator(load(file_ptr))

@@ -1,0 +1,16 @@
+[
+    {"id":  0, "left":  1, "right":  2, "uid": 100,                           "name": "root"},
+    {"id":  1, "left":  3, "right":  4, "uid": 101, "metadata": [1, 2]},
+    {"id":  2, "left":  5, "right":  6, "uid": 102, "metadata": []},
+    {"id":  3, "left":  7,              "uid": 103, "metadata": [3, 1, 2]},
+    {"id":  4, "left":  8, "right":  9, "uid": 104, "metadata": [2]},
+    {"id":  5, "left": 10, "right": 11, "uid": 105, "metadata": [0, 1, 2]},
+    {"id":  6,             "right": 12, "uid": 106, "metadata": [1]},
+    {"id":  7, "left": 13,              "uid": 107, "metadata": [1, 2, 3, 4, 5]},
+    {"id":  8,                          "uid": 108},
+    {"id":  9,                          "uid": 109},
+    {"id": 10,                          "uid": 110, "metadata": [8, 1, 2]},
+    {"id": 11,                          "uid": 111, "metadata": [13, 1, 2]},
+    {"id": 12,                          "uid": 112, "metadata": [1, 5, 2]},
+    {"id": 13,                          "uid": 113, "metadata": [1]}
+]

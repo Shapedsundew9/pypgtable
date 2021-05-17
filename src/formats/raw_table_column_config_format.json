@@ -56,10 +56,6 @@
             "gist",
             "gin"
         ],
-        "dependencies": {
-            "unique": false,
-            "primary_key": false
-        },
         "meta": {
             "description": "Column is indexed with the selected algorithm. PRIMARY KEY or UNIQUE columns cannot be additionally indexed."
         }
