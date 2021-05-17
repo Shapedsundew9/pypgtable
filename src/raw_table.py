@@ -8,10 +8,10 @@ from time import sleep
 from psycopg2 import sql, errors, ProgrammingError
 from cerberus import Validator
 from cerberus.errors import ValidationError
-from .database import db_transaction, db_connect
-from .text_token import text_token, register_token_code
-from .common import backoff_generator
-from .validators import raw_table_config_validator
+from database import db_transaction, db_connect
+from common import backoff_generator
+from validators import raw_table_config_validator
+from utils.text_token import text_token, register_token_code
 
 
 _logger = getLogger(__name__)
@@ -21,7 +21,7 @@ _logit = lambda:_logger.getEffectiveLevel() == DEBUG
 register_token_code("I05000", "SQL:\n{sql}")
 register_token_code("I05001", "Table {table} cannot be created as it already exists in database {dbname}.")
 register_token_code("I05002", "User {user} does not have privileges to create a table in database {dbname}.")
-register_token_code("I05003", "Table {table} in database {dbname} does not yet exist. Waiting {backoff}s to retry.")
+register_token_code("I05003", "Table {table} in database {dbname} does not yet exist. Waiting {backoff:.2}s to retry.")
 register_token_code("E05000", "Configuration error: {error}")
 register_token_code("E05001", "{set} columns differ between DB {dbname} and table {table} configuration.")
 
@@ -46,7 +46,7 @@ _TABLE_DELETE_SQL = sql.SQL("DELETE FROM {0} WHERE {1}")
 _TABLE_RETURNING_SQL = sql.SQL(" RETURNING *")
 
 
-class database_raw_table():
+class raw_table():
     """Connects to (or creates as needed) a postgres database & table.
 
     The intention of database_table is to provide a simple interface to instanciate, 
@@ -54,7 +54,7 @@ class database_raw_table():
     automatic type conversions.)
 
     Whilst database_table acts like it has complete control over the defined databases
-    it does not assume that it does. Once tables are created database_raw_table users
+    it does not assume that it does. Once tables are created raw_table users
     need only have SELECT, INSERT & UPDATE privileges.
     """
  
@@ -76,7 +76,7 @@ class database_raw_table():
 
     def __len__(self):
         """Return the number of entries in the table."""
-        return self._db_transaction((_TABLE_LEN_SQL.format(self._table),))
+        return self._db_transaction((_TABLE_LEN_SQL.format(self._table),)).fetchone()[0]
 
 
     def __getitem__(self, pk_value):
@@ -91,15 +91,16 @@ class database_raw_table():
         (pyscopg2.cursor) with the query results.
         """
         if self._primary_key is None: raise ProgrammingError
-        return self.select(['{' + self._primary_key + '} = {_pk_value}', {'_pk_value': pk_value}])
+        return self.select(['{' + self._primary_key + '} = {_pk_value}', {'_pk_value': pk_value}]).fetchone()[0]
 
 
     def _validate_config(self):
         """Validate the table configuration."""
         if not raw_table_config_validator.validate(self.config):
-            for error in raw_table_config_validator.errors:
-                _logger.error(text_token({'E05000': {'error': error}}))
-            raise ValidationError
+            for field, error in raw_table_config_validator.errors.items():
+                _logger.error(text_token({'E05000': {'error': field + ': ' + str(error)}}))
+            raise ValueError
+        self.config = raw_table_config_validator.sub_normalized(self.config)
 
 
     def _get_primary_key(self):
@@ -109,7 +110,7 @@ class database_raw_table():
         -------
         (str) column name of the primary key or None if there is no primary key.
         """
-        for k, v in self.config['schema']:
+        for k, v in self.config['schema'].items():
             if v.get('primary_key', False): return k
         return None
 
@@ -144,8 +145,8 @@ class database_raw_table():
 
 
     def _sql_to_string(self, sql_str):
-        """Wrap sql.SQL.to_string() to convert sql.SQL to a string (usually for logging)."""
-        return sql_str.to_string(db_connect(self.config['database']['dbname'], self.config['database']))
+        """Wrap sql.SQL.as_string() to convert sql.SQL to a string (usually for logging)."""
+        return sql_str.as_string(db_connect(self.config['database']['dbname'], self.config['database']))
 
 
     def _check_permissions(self):
@@ -188,8 +189,8 @@ class database_raw_table():
         unmatched_set = set(columns) - set(self.config['schema'].keys())
         #TODO: Could validate types & properties too.
         if unmatched_set:
-            _logger.error(text_token({'E05001':{'set':unmatched_set, 'dbname': self.config['database']['dbname'], 'table': self.table}}))
-            raise ValidationError
+            _logger.error(text_token({'E05001':{'set':unmatched_set, 'dbname': self.config['database']['dbname'], 'table': self.config['table']}}))
+            raise ValueError("Existing database table {} columns do not match configuration. Unmatched set = {}".format(self.config['table'], unmatched_set))
         return columns
 
 
@@ -200,7 +201,7 @@ class database_raw_table():
         -------
         (bool) True if the table exists else False.
         """
-        return self._db_transaction((_TABLE_EXISTS_SQL.format(self._table), )).fetchone()
+        return self._db_transaction((_TABLE_EXISTS_SQL.format(self._table), )).fetchone()[0]
 
 
     def _create_table(self):

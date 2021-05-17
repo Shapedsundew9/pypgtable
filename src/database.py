@@ -14,9 +14,9 @@ from pprint import pformat
 from time import sleep
 from psycopg2 import sql, connect, InterfaceError, OperationalError
 from psycopg2.extensions import ISOLATION_LEVEL_REPEATABLE_READ, ISOLATION_LEVEL_DEFAULT
-from .common import backoff_generator
-from .text_token import register_token_code, text_token
-from ..utils.text_token import text_token, register_token_code
+from common import backoff_generator
+from utils.text_token import register_token_code, text_token
+from utils.text_token import text_token, register_token_code
 
 
 _connections = {}
@@ -40,8 +40,8 @@ _BACKOFF_FUZZ = True
 _DB_TRANSACTION_ATTEMPTS = 3
 _DB_RECONNECTIONS = 3
 _DB_EXISTS_SQL = sql.SQL("SELECT datname FROM pg_database")
-_DB_CREATE_SQL = sql.SQL("SELECT 'CREATE DATABASE {}' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = {})\gexec")
-_DB_DELETE_SQL = sql.SQL("SELECT 'DELETE DATABASE {}' WHERE EXISTS (SELECT FROM pg_database WHERE datname = {})\gexec")
+_DB_CREATE_SQL = sql.SQL("SELECT 'CREATE DATABASE {}' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = {})\\gexec")
+_DB_DELETE_SQL = sql.SQL("SELECT 'DELETE DATABASE {}' WHERE EXISTS (SELECT FROM pg_database WHERE datname = {})\\gexec")
 
 
 def db_connect(dbname, config):

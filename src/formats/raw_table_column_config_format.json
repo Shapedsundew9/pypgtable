@@ -37,9 +37,6 @@
     "primary_key": {
         "type": "boolean",
         "default": false,
-        "dependencies": {
-            "null": false
-        },
         "meta": {
             "description": "Column is the primary key and automatically indexed if True. Primary key columns cannot have NULL entries."
         }
@@ -47,29 +44,24 @@
     "unique": {
         "type": "boolean",
         "default": false,
-        "dependencies": {
-            "primary_key": false
-        },
         "meta": {
             "description": "Entries in the column are unique and automatically indexed if True. Cannot also be primary keys."
         }
     },
     "index": {
-        "type": {
-            "type": "string",
-            "allowed": [
-                "btree",
-                "hash",
-                "gist",
-                "gin"
-            ],
-            "dependencies": {
-                "unique": false,
-                "primary_key": false
-            },
-            "meta": {
-                "description": "Column is indexed with the selected algorithm. PRIMARY KEY or UNIQUE columns cannot be additionally indexed."
-            }
+        "type": "string",
+        "allowed": [
+            "btree",
+            "hash",
+            "gist",
+            "gin"
+        ],
+        "dependencies": {
+            "unique": false,
+            "primary_key": false
+        },
+        "meta": {
+            "description": "Column is indexed with the selected algorithm. PRIMARY KEY or UNIQUE columns cannot be additionally indexed."
         }
     }
 }

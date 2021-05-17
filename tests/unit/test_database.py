@@ -1,13 +1,14 @@
 """Unit tests for the database.py module."""
 
 import psycopg2
-import microbiome
-from database import _connect_core, db_reconnect, _backoff_generator, db_connect, db_disconnect, db_transaction
+import database
+from database import _connect_core, db_reconnect, db_connect, db_disconnect, db_transaction
 from database import db_disconnect_all, _DB_TRANSACTION_ATTEMPTS, db_exists, db_create, db_delete
-from common import sequential_reference
+from common import backoff_generator
 from psycopg2 import OperationalError
 from psycopg2.extensions import ISOLATION_LEVEL_DEFAULT, ISOLATION_LEVEL_REPEATABLE_READ
-from base_logging import get_logger
+from utils.base_logging import get_logger
+from utils.reference import sequential_reference
 
 
 _logger = get_logger(__file__, __name__)
@@ -28,7 +29,7 @@ def test_connect_core_p0(monkeypatch):
         def __init__(self) -> None: self.value = _MOCK_VALUE_1
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     assert _connect_core(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_1
 
 
@@ -39,7 +40,7 @@ def test_connect_core_n0(monkeypatch):
         def __init__(self) -> None: raise OperationalError
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     assert _connect_core(_MOCK_DBNAME, _MOCK_CONFIG) is None
 
 
@@ -50,7 +51,7 @@ def test_db_reconnect_p0(monkeypatch):
         def __init__(self) -> None: self.value = _MOCK_VALUE_1
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     assert db_reconnect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_1
 
 
@@ -65,8 +66,8 @@ def test_db_reconnect_p1(monkeypatch):
         def __init__(self) -> None: self.value = next(mock_values)
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
-    monkeypatch.setitem(microbiome.database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: mock_connection()})
+    monkeypatch.setattr(database, 'connect', mock_connect)
+    monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: mock_connection()})
     assert db_reconnect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_2
 
 
@@ -81,8 +82,8 @@ def test_db_reconnect_n0(monkeypatch):
         def __init__(self) -> None: self.value = next(mock_values)
         def close(self): raise OperationalError
     def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
-    monkeypatch.setitem(microbiome.database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: mock_connection()})
+    monkeypatch.setattr(database, 'connect', mock_connect)
+    monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: mock_connection()})
     assert db_reconnect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_2
 
 
@@ -112,11 +113,12 @@ def test_db_reconnect_n1(monkeypatch):
     def mock_sleep(backoff):
         global sleep_duration
         sleep_duration += backoff 
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
-    monkeypatch.setattr(microbiome.database, 'sleep', mock_sleep)
-    monkeypatch.setitem(microbiome.database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: mock_connection()})
+    monkeypatch.setattr(database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'sleep', mock_sleep)
+    backoff = next(backoff_generator(fuzz=False))
+    monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: mock_connection()})
     assert db_reconnect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_2
-    assert next(_backoff_generator()) == sleep_duration
+    assert backoff >= sleep_duration/1.1 and backoff <= sleep_duration/0.9
 
 
 def test_db_reconnect_n2(monkeypatch):
@@ -148,12 +150,13 @@ def test_db_reconnect_n2(monkeypatch):
     def mock_sleep(backoff):
         global sleep_duration
         sleep_duration += backoff 
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
-    monkeypatch.setattr(microbiome.database, 'sleep', mock_sleep)
-    monkeypatch.setitem(microbiome.database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: mock_connection()})
-    backoff_gen = _backoff_generator()
+    monkeypatch.setattr(database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'sleep', mock_sleep)
+    monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: mock_connection()})
+    backoff_gen = backoff_generator(fuzz=False)
+    total_backoff = sum((next(backoff_gen) for _ in range(_INFINITE_BACKOFFS)))
     assert db_reconnect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_2
-    assert sum((next(backoff_gen) for _ in range(_INFINITE_BACKOFFS))) == sleep_duration
+    assert total_backoff >= sleep_duration/1.1 and total_backoff <= sleep_duration/0.9
 
 
 def test_db_connect_p0(monkeypatch):
@@ -163,7 +166,7 @@ def test_db_connect_p0(monkeypatch):
         def __init__(self) -> None: self.value = _MOCK_VALUE_1
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     assert db_connect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_1
 
 
@@ -178,7 +181,7 @@ def test_db_connect_p1(monkeypatch):
         def __init__(self) -> None: self.value = next(mock_values)
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     assert db_connect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_1
     assert db_connect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_1
 
@@ -198,7 +201,7 @@ def test_db_disconnect_p0(monkeypatch):
         def __init__(self) -> None: self.value = next(mock_values)
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     connection = db_connect(_MOCK_DBNAME, _MOCK_CONFIG)
     assert connection.value == _MOCK_VALUE_1
     db_disconnect(_MOCK_DBNAME, _MOCK_CONFIG)
@@ -220,7 +223,7 @@ def test_db_disconnect_n0(monkeypatch):
         def __init__(self) -> None: self.value = next(mock_values)
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     assert db_connect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_1
     db_disconnect(_MOCK_DBNAME, _MOCK_CONFIG)
     assert db_connect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_2
@@ -243,7 +246,7 @@ def test_db_transaction_p0(monkeypatch):
         def cursor(self): return mock_cursor()
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", ))
     assert len(dbcur_list) == 1
     assert not dbcur_list[0].fetchone()
@@ -267,7 +270,7 @@ def test_db_transaction_p1(monkeypatch):
         def cursor(self): return mock_cursor()
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"))
     assert len(dbcur_list) == 3
     assert dbcur_list[0].fetchone() == 0
@@ -294,7 +297,7 @@ def test_db_transaction_p2(monkeypatch):
             return mock_cursor()
         def set_session(self, isolation_level): self.isolation_level = isolation_level
     def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"), repeatable=True)
     assert len(dbcur_list) == 3
     assert dbcur_list[0].fetchone() == 0
@@ -322,7 +325,7 @@ def test_db_transaction_p3(monkeypatch):
             return mock_cursor()
         def commit(self): self.committed = True
     def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"), read=False)
     assert len(dbcur_list) == 3
     assert dbcur_list[0].fetchone() == 0
@@ -358,7 +361,7 @@ def test_db_transaction_n0(monkeypatch):
         def cursor(self): return mock_cursor()
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"))
     assert len(dbcur_list) == 3
     assert dbcur_list[0].fetchone() == 2
@@ -394,7 +397,7 @@ def test_db_transaction_n1(monkeypatch):
         def cursor(self): return mock_cursor()
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"))
     assert len(dbcur_list) == 3
     assert dbcur_list[0].fetchone() == _DB_TRANSACTION_ATTEMPTS
@@ -424,7 +427,7 @@ def test_db_transaction_n2(monkeypatch):
         def commit(self): self.committed = True
         def rollback(self): self.rolledback = True
     def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"), read=False)
     assert len(dbcur_list) == 3
     assert dbcur_list[0].fetchone() == 2
@@ -449,7 +452,7 @@ def test_db_exists_p0(monkeypatch):
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
     def mock_as_string(*args, **kwargs): return "SQL string"
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     monkeypatch.setattr(psycopg2.sql.SQL, 'as_string', mock_as_string)
     assert db_exists(_MOCK_DBNAME, _MOCK_CONFIG)
 
@@ -469,7 +472,7 @@ def test_db_exists_p1(monkeypatch):
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
     def mock_as_string(*args, **kwargs): return "SQL string"
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     monkeypatch.setattr(psycopg2.sql.SQL, 'as_string', mock_as_string)
     assert not db_exists("Does not exist", _MOCK_CONFIG)
 
@@ -491,7 +494,7 @@ def test_db_create_p0(monkeypatch):
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
     def mock_as_string(*args, **kwargs): return "SQL string"
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     monkeypatch.setattr(psycopg2.sql.Composed, 'as_string', mock_as_string)
     db_create(_MOCK_DBNAME, _MOCK_CONFIG)
 
@@ -513,7 +516,7 @@ def test_db_delete_p0(monkeypatch):
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
     def mock_as_string(*args, **kwargs): return "SQL string"
-    monkeypatch.setattr(microbiome.database, 'connect', mock_connect)
+    monkeypatch.setattr(database, 'connect', mock_connect)
     monkeypatch.setattr(psycopg2.sql.Composed, 'as_string', mock_as_string)
     db_delete(_MOCK_DBNAME, _MOCK_CONFIG)
 
