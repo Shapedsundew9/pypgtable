@@ -93,5 +93,33 @@
         "meta": {
             "description": "Validate format file folder, format file, data files folder & datafiles. Increases start up time."
         }
+    },
+    "create_db": {
+        "type": "boolean",
+        "default": false,
+        "meta": {
+            "description": "If the DB does not exist create it."
+        }
+    },
+    "create_table": {
+        "type": "boolean",
+        "default": false,
+        "meta": {
+            "description": "If the table does not exist create it."
+        }
+    },
+    "wait_for_db": {
+        "type": "boolean",
+        "default": false,
+        "meta": {
+            "description": "If the DB does not exist keep trying to connect until it does."
+        }
+    },
+    "wait_for_table": {
+        "type": "boolean",
+        "default": false,
+        "meta": {
+            "description": "If the table does not exist keep checking until it does."
+        }
     }
 }

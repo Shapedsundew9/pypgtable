@@ -30,8 +30,8 @@ register_token_code('W04003', '{attempts} transactions failed. Dropping database
 register_token_code('E04000', 'Transaction cannot complete to database {dbname}. See previous log lines for details.')
 register_token_code('I04000', 'Connected to postgresql database {dbname} with config {config}.')
 register_token_code('I04001', 'Database {dbname} with config {config} {exists} exist.')
-register_token_code('I04002', 'Database {dbname} with config {config} created or already exists.')
-register_token_code('I04003', 'Database {dbname} with config {config} deleted or did not exist.')
+register_token_code('I04002', 'Database {dbname} with config {config} created.')
+register_token_code('I04003', 'Database {dbname} with config {config} deleted.')
 
 
 _INITIAL_DELAY = 0.125
@@ -40,8 +40,8 @@ _BACKOFF_FUZZ = True
 _DB_TRANSACTION_ATTEMPTS = 3
 _DB_RECONNECTIONS = 3
 _DB_EXISTS_SQL = sql.SQL("SELECT datname FROM pg_database")
-_DB_CREATE_SQL = sql.SQL("SELECT 'CREATE DATABASE {}' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = {})\\gexec")
-_DB_DELETE_SQL = sql.SQL("SELECT 'DELETE DATABASE {}' WHERE EXISTS (SELECT FROM pg_database WHERE datname = {})\\gexec")
+_DB_CREATE_SQL = sql.SQL("CREATE DATABASE {}")
+_DB_DELETE_SQL = sql.SQL("DELETE DATABASE {}")
 
 
 def db_connect(dbname, config):
@@ -66,7 +66,7 @@ def db_connect(dbname, config):
 	"""
 	dbs = _connections.setdefault(config['host'], {})
 	connection = dbs.setdefault(dbname, None)
-	if connection is None: connection = _connections['host']['dbname'] = db_reconnect(dbname, config)
+	if connection is None: connection = _connections[config['host']]['dbname'] = db_reconnect(dbname, config)
 	return connection
 
 
@@ -198,8 +198,8 @@ def db_exists(dbname, config):
 	"""
 	connection = db_connect(config['maintenance_db'], config)
 	_logger.info(_DB_EXISTS_SQL.as_string(connection))
-	retval = (dbname,) in db_transaction(dbname, config, (_DB_EXISTS_SQL,))[0].fetchall()
-	_logger.info(text_token({'I04001': {'dbname': dbname, 'config': pformat(config, compact=True, sort_dicts=True),
+	retval = (dbname,) in db_transaction(config['maintenance_db'], config, (_DB_EXISTS_SQL,))[0].fetchall()
+	_logger.info(text_token({'I04001': {'dbname': config['maintenance_db'], 'config': pformat(config, compact=True, sort_dicts=True),
 		'exists': ('DOES NOT', 'DOES')[retval]}}))
 	db_disconnect(config['maintenance_db'], config)
 	return retval
@@ -222,12 +222,12 @@ def db_create(dbname, config):
 		'maintenance_db' (str): Name of the maintenance DB
 	}
 	"""
-	sql_str = _DB_CREATE_SQL.format(sql.Identifier(dbname), sql.Identifier(dbname))
+	sql_str = _DB_CREATE_SQL.format(sql.Identifier(dbname))
 	connection = db_connect(config['maintenance_db'], config)
 	connection.autocommit = True
 	_logger.info(sql_str.as_string(connection))
-	db_transaction(dbname, config, (sql_str,), read=False)
-	_logger.info(text_token({'I04002': {'dbname': dbname, 'config': pformat(config, compact=True, sort_dicts=True)}}))
+	db_transaction(config['maintenance_db'], config, (sql_str,), read=False)
+	_logger.info(text_token({'I04002': {'dbname': config['maintenance_db'], 'config': pformat(config, compact=True, sort_dicts=True)}}))
 	db_disconnect(config['maintenance_db'], config)
 
 
@@ -248,7 +248,7 @@ def db_delete(dbname, config):
 		'maintenance_db' (str): Name of the maintenance DB
 	}
 	"""
-	sql_str = _DB_DELETE_SQL.format(sql.Identifier(dbname), sql.Identifier(dbname))
+	sql_str = _DB_DELETE_SQL.format(sql.Identifier(dbname))
 	db_disconnect(dbname, config)
 	connection = db_connect(config['maintenance_db'], config)
 	connection.autocommit = True

@@ -14,8 +14,8 @@ from utils.reference import sequential_reference
 _logger = get_logger(__file__, __name__)
 
 
-_MOCK_CONFIG = {'host': '_host', 'port': '_port', 'user': '_user', 'password': '_password', 'maintenance_db': '_maintenance_db'}
-_MOCK_DBNAME = '_dbname'
+_MOCK_CONFIG = {'host': 'host', 'port': 'port', 'user': 'user', 'password': 'password', 'maintenance_db': 'maintenance_db'}
+_MOCK_DBNAME = 'dbname'
 _MOCK_VALUE_1 = 1234
 _MOCK_VALUE_2 = 4321
 _MOCK_ERROR = 0
