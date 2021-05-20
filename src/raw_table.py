@@ -50,9 +50,8 @@ _DEFAULT_UPDATE_STR = "{{{0}}}={{EXCLUDED.{0}}}"
 class raw_table():
     """Connects to (or creates as needed) a postgres database & table.
 
-    The intention of database_table is to provide a simple interface to instanciate, 
-    append, update & query a persistant data store using database types (i.e. no
-    automatic type conversions.)
+    The intention of raw_table is to provide a simple interface to instanciate, 
+    append, update & query a persistant data store using directly mapped database types.
 
     Whilst database_table acts like it has complete control over the defined databases
     it does not assume that it does. Once tables are created raw_table users
@@ -86,21 +85,6 @@ class raw_table():
     def __len__(self):
         """Return the number of entries in the table."""
         return self._db_transaction((_TABLE_LEN_SQL.format(self._table),))[0].fetchone()[0]
-
-
-    def __getitem__(self, pk_value):
-        """Query the table for the row with primary key value pk_value.
-        
-        Args
-        ----
-        pk_value (obj): A primary key value.
-
-        Returns
-        -------
-        (pyscopg2.cursor) with the query results.
-        """
-        if self._primary_key is None: raise ValueError('SELECT row on primary key but no primary key defined!')
-        return self.select(['{' + self._primary_key + '} = {_pk_value}', {'_pk_value': pk_value}]).fetchone()[0]
 
 
     def _validate_config(self):
@@ -194,19 +178,23 @@ class raw_table():
                 abspath = join(self.config['data_file_folder'], data_file)
                 _logger.info(text_token({'I05004': {'table': self.config['table'], 'file': abspath}}) )
                 with open(abspath, "r") as file_ptr:
-                    data = load(file_ptr)
-                    last_datum_keys = set()
-                    ordered_keys = tuple()
-                    current_batch = []
-                    for datum in data:
-                        if last_datum_keys == set(datum.keys()):
-                            current_batch.append([datum[k] for k in ordered_keys])
-                        else:
-                            if current_batch: self.insert(ordered_keys, current_batch)
-                            ordered_keys = tuple(datum.keys())
-                            current_batch = [[datum[k] for k in ordered_keys]]
-                            last_datum_keys = set(datum.keys())
-                    self.insert(ordered_keys, current_batch)
+                    for columns, values in self.batch_dict_data(load(file_ptr)):
+                        self.insert(columns, values)
+
+
+    def batch_dict_data(self, data):
+        last_datum_keys = set()
+        ordered_keys = tuple()
+        current_batch = []
+        for datum in data:
+            if last_datum_keys == set(datum.keys()):
+                current_batch.append([datum[k] for k in ordered_keys])
+            else:
+                if current_batch: yield ordered_keys, current_batch
+                ordered_keys = tuple(datum.keys())
+                current_batch = [[datum[k] for k in ordered_keys]]
+                last_datum_keys = set(datum.keys())
+        yield ordered_keys, current_batch
 
 
     # Get the table definition 
@@ -307,16 +295,6 @@ class raw_table():
         return tuple((dbcur.fetchall() for dbcur in self._db_transaction(sql_str_list, repeatable)))
    
 
-    def recursive_select(self, query_str, literals={}, columns=None, repeatable=False):
-        if columns is None: columns = self._columns
-        if not (self._pm_columns <= set(columns)): raise ValueError("columns must be a the same or a superset of ptr_map columns.")
-        t_columns = sql.SQL('t.') + sql.SQL(', t.').join(map(sql.Identifier, columns))
-        columns = sql.SQL(', ').join(map(sql.Identifier, columns))
-        format_dict = self._format_dict(literals)
-        sql_str_list = [_TABLE_RECURSIVE_SELECT.format(columns, self._table, sql.SQL(query_str).format(**format_dict), t_columns, self._pm_sql)]
-        return self._sql_queries_transaction(sql_str_list, repeatable)[0]
-
-
     def select(self, query_str='', literals={}, columns=None, repeatable=False):
         if columns is None: columns = self._columns
         columns = sql.SQL(', ').join(map(sql.Identifier, columns))
@@ -325,8 +303,14 @@ class raw_table():
         return self._sql_queries_transaction(sql_str_list, repeatable)[0]
 
 
-    def insert(self, columns, values):
-        return self.upsert(columns, values, _TABLE_INSERT_CONFLICT_STR)
+    def recursive_select(self, query_str, literals={}, columns=None, repeatable=False):
+        if columns is None: columns = self._columns
+        if not (self._pm_columns <= set(columns)): raise ValueError("columns must be a the same or a superset of ptr_map columns.")
+        t_columns = sql.SQL('t.') + sql.SQL(', t.').join(map(sql.Identifier, columns))
+        columns = sql.SQL(', ').join(map(sql.Identifier, columns))
+        format_dict = self._format_dict(literals)
+        sql_str_list = [_TABLE_RECURSIVE_SELECT.format(columns, self._table, sql.SQL(query_str).format(**format_dict), t_columns, self._pm_sql)]
+        return self._sql_queries_transaction(sql_str_list, repeatable)[0]
 
 
     def _format_dict(self, literals):
@@ -371,7 +355,11 @@ class raw_table():
         update_sql = sql.SQL(update_str).format(**format_dict)
         if returning: update_sql += _TABLE_RETURNING_SQL + sql.SQL(',').join([sql.Identifier(column) for column in returning])
         retval = self._db_transaction((_TABLE_INSERT_SQL.format(self._table, columns_sql, values_sql) + update_sql,), read=False)[0]
-        return retval.fetchall() if returning else retval
+        return retval.fetchall() if returning else []
+
+
+    def insert(self, columns, values):
+        self.upsert(columns, values, _TABLE_INSERT_CONFLICT_STR)
 
 
     def update(self, update_str, query_str, literals={}, returning=tuple()):
@@ -401,10 +389,10 @@ class raw_table():
         sql_str = _TABLE_UPDATE_SQL.format(self._table, sql.SQL(update_str).format(**format_dict), sql.SQL(query_str).format(**format_dict))
         if returning: sql_str += _TABLE_RETURNING_SQL +  sql.SQL(',').join([sql.Identifier(column) for column in returning])
         retval = self._db_transaction((sql_str,), read=False)[0]
-        return retval.fetchall() if returning else retval
+        return retval.fetchall() if returning else []
 
 
-    def delete(self, query_str='', literals={}, returning=tuple()):
+    def delete(self, query_str, literals={}, returning=tuple()):
         """Delete rows from the table.
 
         If query_str is not specified all rows in the table are deleted.
@@ -426,7 +414,7 @@ class raw_table():
         sql_str = _TABLE_DELETE_SQL.format(self._table, sql.SQL(query_str).format(**format_dict))
         if returning: sql_str += _TABLE_RETURNING_SQL + sql.SQL(',').join([sql.Identifier(column) for column in returning])
         retval = self._db_transaction((sql_str,), read=False)[0]
-        return retval.fetchall() if returning else retval
+        return retval.fetchall() if returning else []
 
 
     def validate(self, columns, values):

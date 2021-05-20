@@ -12,7 +12,7 @@ of a single threaded process.
 from logging import getLogger
 from pprint import pformat
 from time import sleep
-from psycopg2 import sql, connect, InterfaceError, OperationalError
+from psycopg2 import sql, connect, InterfaceError, OperationalError, ProgrammingError, errors
 from psycopg2.extensions import ISOLATION_LEVEL_REPEATABLE_READ, ISOLATION_LEVEL_DEFAULT
 from common import backoff_generator
 from utils.text_token import register_token_code, text_token
@@ -27,6 +27,7 @@ register_token_code('W04000', 'Backing off connection re-attempt {attempts} for 
 register_token_code('W04001', 'Unable to connect to database {dbname} with config {config}. Error: {error}.')
 register_token_code('W04002', 'Transaction attempt {attempt} of {total}: Unable to {rw} database {dbname} with error code: {code} error: {error}.')
 register_token_code('W04003', '{attempts} transactions failed. Dropping database {dbname} connection and re-establishing. {reconnection} of {total}.')
+register_token_code('W04004', 'Insufficient privileges for user {user} to read maintenance DB {mdb}. Assuming {db} exists.')
 register_token_code('E04000', 'Transaction cannot complete to database {dbname}. See previous log lines for details.')
 register_token_code('I04000', 'Connected to postgresql database {dbname} with config {config}.')
 register_token_code('I04001', 'Database {dbname} with config {config} {exists} exist.')
@@ -178,6 +179,9 @@ def _connect_core(dbname, config):
 def db_exists(dbname, config):
 	"""Connect to the maintenance database to see if dbname exists.
 
+	If the user has insufficient privileges to read from the maintenance
+	DB then return True.
+	
 	The connection to the maintenance DB is closed after the existance of
 	dbname is determined.
 	
@@ -196,7 +200,13 @@ def db_exists(dbname, config):
 	-------
 	(bool) True if dbname exists else False.
 	"""
-	connection = db_connect(config['maintenance_db'], config)
+	try:
+		connection = db_connect(config['maintenance_db'], config)
+	except ProgrammingError as e:
+		if e.pgcode == errors.InsufficientPrivilege:
+			_logger.warning(text_token({'W04004': {'user': config['user'], 'mdb': config['maintenance_db'], 'db': config['dbname']}}))
+			return True
+		raise e
 	_logger.info(_DB_EXISTS_SQL.as_string(connection))
 	retval = (dbname,) in db_transaction(config['maintenance_db'], config, (_DB_EXISTS_SQL,))[0].fetchall()
 	_logger.info(text_token({'I04001': {'dbname': config['maintenance_db'], 'config': config,
