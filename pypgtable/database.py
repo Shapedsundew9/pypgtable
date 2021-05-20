@@ -326,4 +326,4 @@ def db_transaction(dbname, config, sql_str_iter, read=True, repeatable=False):
 			'rw': ('write', 'read')[read], 'dbname': dbname, 'reconnection': reconnection}}))
 		db_reconnect(dbname, config)
 	_logger.error(text_token({'E04000': {'dbname': dbname}}))
-	raise e
+	raise e # noqa: F821
