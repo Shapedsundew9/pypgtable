@@ -4,7 +4,7 @@
 from copy import deepcopy
 from os.path import join
 from json import load
-from raw_table import raw_table
+from .raw_table import raw_table
 from cerberus import Validator
 
 

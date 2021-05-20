@@ -8,9 +8,9 @@ from time import sleep
 from psycopg2 import sql, errors, ProgrammingError
 from cerberus import Validator
 from cerberus.errors import ValidationError
-from database import db_transaction, db_connect, db_exists, db_create, db_delete, db_disconnect
-from common import backoff_generator
-from validators import raw_table_config_validator
+from .database import db_transaction, db_connect, db_exists, db_create, db_delete, db_disconnect
+from .common import backoff_generator
+from .validators import raw_table_config_validator
 from utils.text_token import text_token, register_token_code
 
 
