@@ -37,7 +37,11 @@ _CONFIG = {
             'index': 'btree',
             'unique': True,
         },
-        'meta' : {
+        'updated': {
+            'type': 'TIMESTAMP',
+            'default': 'NOW()'
+        },
+        'metadata' : {
             'type': 'INTEGER',
             'array': True,
             'index': 'btree',
@@ -53,6 +57,8 @@ _CONFIG = {
     'data_file_folder': '../data',
     'data_files': ['data_values.json'],
     'validate': True,
+    'delete_db': False,
+    'delete_table': True,
     'create_db': True,
     'create_table': True,
     'wait_for_db': False,
@@ -60,244 +66,92 @@ _CONFIG = {
 }
 
 
-def test_create_table(monkeypatch):
+def test_create_table():
     """Validate a the SQL sequence when a table exists."""
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
     assert not rt is None
-    rt.delete_table()
 
 
-def test_table_does_not_exist(monkeypatch):
-    """Validate a the SQL sequence when a table does not exist.
-    
-    In this case the table is created.
-    """
-    def mock_fetchone(self):
-        if _MOCK_CURSOR.count == 0 and self._data[0][:15] == 'SELECT EXISTS (':
-            _MOCK_CURSOR.count += 1
-            return (False,)
-        if self._data[0][:15] == 'SELECT COUNT(*)': return (5,)
-        if self._data[0][:15] == 'SELECT EXISTS (': return (True,)
-        return self._data[0]
-    monkeypatch.setattr(_MOCK_CURSOR, 'fetchone', mock_fetchone)
-    monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
-    monkeypatch.setattr(raw_table, '_db_transaction', _MOCK_DB_TRANSACTION)
-    _MOCK_CURSOR.sql_history = []
-    config = deepcopy(_MOCK_CONFIG)
-    raw_table(config)
-    assert len(_MOCK_CURSOR.sql_history) == 7
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _CREATE_TABLE, _CREATE_UNIQUE_INDEX,
-         _CREATE_INDEX, _TABLE_LEN, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS)):
-        assert _MOCK_CURSOR.sql_history[i] == sql_str
-
-
-def test_table_does_not_exist_duplicate(monkeypatch):
-    """Validate a the SQL sequence when a table does not exist.
-    
-    In this case creation fails as the table has been created between the
-    check and the create statements.
-    """
-    def mock_fetchone(self):
-        if _MOCK_CURSOR.count == 0 and self._data[0][:15] == 'SELECT EXISTS (':
-            _MOCK_CURSOR.count += 1
-            return (False,)
-        if self._data[0][:15] == 'SELECT COUNT(*)': return (5,)
-        if self._data[0][:15] == 'SELECT EXISTS (': return (True,)
-        return self._data[0]
-    def mock_db_transaction(self, sql_str_iter, read=True, repeatable=False):
-        sql_str_tuple = tuple((_MOCK_SQL_TO_STRING(None, sql_str) for sql_str in sql_str_iter))
-        error = ProgrammingError
-        error.pgcode = errors.DuplicateTable
-        cursor = _MOCK_CURSOR(sql_str_tuple)
-        if sql_str_tuple[0][0:13] == 'CREATE TABLE ': raise error
-        return (cursor,)
-    monkeypatch.setattr(_MOCK_CURSOR, 'fetchone', mock_fetchone)
-    monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
-    monkeypatch.setattr(raw_table, '_db_transaction', mock_db_transaction)
-    _MOCK_CURSOR.sql_history = []
-    _MOCK_CURSOR.count = 0
-    config = deepcopy(_MOCK_CONFIG)
-    raw_table(config)
-    assert len(_MOCK_CURSOR.sql_history) == 4
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _CREATE_TABLE, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS)):
-        assert _MOCK_CURSOR.sql_history[i] == sql_str
-
-
-def test_table_does_not_exist_privilege(monkeypatch):
-    """Validate a the SQL sequence when a table does not exist.
-    
-    In this case creation fails as the table has been created between the
-    check and the create statements.
-    """
-    def mock_fetchone(self):
-        if _MOCK_CURSOR.count == 0 and self._data[0][:15] == 'SELECT EXISTS (':
-            _MOCK_CURSOR.count += 1
-            return (False,)
-        if self._data[0][:15] == 'SELECT COUNT(*)': return (5,)
-        if self._data[0][:15] == 'SELECT EXISTS (': return (True,)
-        return self._data[0]
-    def mock_db_transaction(self, sql_str_iter, read=True, repeatable=False):
-        sql_str_tuple = tuple((_MOCK_SQL_TO_STRING(None, sql_str) for sql_str in sql_str_iter))
-        error = ProgrammingError
-        error.pgcode = errors.InsufficientPrivilege
-        cursor = _MOCK_CURSOR(sql_str_tuple)
-        if sql_str_tuple[0][0:13] == 'CREATE TABLE ': raise error
-        return (cursor,)
-    monkeypatch.setattr(_MOCK_CURSOR, 'fetchone', mock_fetchone)
-    monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
-    monkeypatch.setattr(raw_table, '_db_transaction', mock_db_transaction)
-    _MOCK_CURSOR.sql_history = []
-    _MOCK_CURSOR.count = 0
-    config = deepcopy(_MOCK_CONFIG)
-    raw_table(config)
-    assert len(_MOCK_CURSOR.sql_history) == 4
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _CREATE_TABLE, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS)):
-        assert _MOCK_CURSOR.sql_history[i] == sql_str
-
-
-def test_table_does_not_exist_other(monkeypatch):
-    """Validate a the SQL sequence when a table does not exist.
-    
-    In this case creation fails with an unexpected exception.
-    """
-    def mock_fetchone(self):
-        if _MOCK_CURSOR.count == 0 and self._data[0][:15] == 'SELECT EXISTS (':
-            _MOCK_CURSOR.count += 1
-            return (False,)
-        if self._data[0][:15] == 'SELECT COUNT(*)': return (5,)
-        if self._data[0][:15] == 'SELECT EXISTS (': return (True,)
-        return self._data[0]
-    def mock_db_transaction(self, sql_str_iter, read=True, repeatable=False):
-        sql_str_tuple = tuple((_MOCK_SQL_TO_STRING(None, sql_str) for sql_str in sql_str_iter))
-        cursor = _MOCK_CURSOR(sql_str_tuple)
-        if sql_str_tuple[0][0:13] == 'CREATE TABLE ': raise DatabaseError
-        return (cursor,)
-    monkeypatch.setattr(_MOCK_CURSOR, 'fetchone', mock_fetchone)
-    monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
-    monkeypatch.setattr(raw_table, '_db_transaction', mock_db_transaction)
-    _MOCK_CURSOR.sql_history = []
-    _MOCK_CURSOR.count = 0
-    config = deepcopy(_MOCK_CONFIG)
-    try: 
-        raw_table(config)
-    except DatabaseError:
-        assert True
-    else:
-        assert False
-
-
-def test_valid_config_with_primary_key(monkeypatch):
-    """Add a primary key to the _MOCK_CONFIG and make sure we get it back."""
-    monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
-    monkeypatch.setattr(raw_table, '_db_transaction', _MOCK_DB_TRANSACTION)
-    _MOCK_CURSOR.sql_history = []
-    config = deepcopy(_MOCK_CONFIG)
-    rt = raw_table(config)
-    assert rt._primary_key == 'id'
-
-
-def test_select(monkeypatch):
+def test_select():
     """As it says on the tin."""
-    monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
-    monkeypatch.setattr(raw_table, '_db_transaction', _MOCK_DB_TRANSACTION)
-    _MOCK_CURSOR.sql_history = []
-    config = deepcopy(_MOCK_CONFIG)
+    config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    rt.select(['WHERE {id} = {seven}'], {'seven': 7}, columns=('uid', 'left', 'right'))
-    assert len(_MOCK_CURSOR.sql_history) == 4
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _SELECT)):
-        assert _MOCK_CURSOR.sql_history[i] == sql_str
+    data = rt.select('WHERE {id} = {seven}', {'seven': 7}, columns=('uid', 'left', 'right'))
+    assert data == [(107, 13, None)]
 
 
-def test_recursive_select(monkeypatch):
+def test_recursive_select():
     """As it says on the tin."""
-    monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
-    monkeypatch.setattr(raw_table, '_db_transaction', _MOCK_DB_TRANSACTION)
-    _MOCK_CURSOR.sql_history = []
-    config = deepcopy(_MOCK_CONFIG)
+    config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    rt.recursive_select(['WHERE {id} = {seven}'], {'seven': 7}, columns=('uid', 'id', 'left', 'right'))
-    assert len(_MOCK_CURSOR.sql_history) == 4
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _RECURSIVE_SELECT)):
-        assert _MOCK_CURSOR.sql_history[i] == sql_str
+    data = rt.recursive_select('WHERE {id} = 2', columns=('id', 'uid', 'left', 'right'))
+    assert data == [(2, 102, 5, 6), (5, 105, 10, 11), (6, 106, None, 12),
+        (10, 110, None, None), (11, 111, None, None), (12, 112, None, None)]
 
 
-def test_insert(monkeypatch):
+def test_insert():
     """As it says on the tin."""
-    monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
-    monkeypatch.setattr(raw_table, '_db_transaction', _MOCK_DB_TRANSACTION)
-    _MOCK_CURSOR.sql_history = []
-    config = deepcopy(_MOCK_CONFIG)
+    config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    data = (
-        {"id": 91, "left":  3, "right":  4, "uid": 901, "metadata": [1, 2],    "name": "Harry"},
-        {"id": 92, "left":  5, "right":  6, "uid": 902, "metadata": [],        "name": "William"},
-        {"id": 93, "left":  7,              "uid": 903, "metadata": [3, 1, 2], "name": "Diana"}
-    )
-    rt.insert(data)
-    assert len(_MOCK_CURSOR.sql_history) == 4
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _INSERT)):
-        assert _MOCK_CURSOR.sql_history[i] == sql_str
+    columns = ("id", "left", "right", "uid", "metadata", "name")
+    values = ((91, 3, 4, 901, [1, 2], "Harry"), (92, 5, 6, 902, [], "William"))
+    rt.insert(columns, values)
+    data = tuple(rt.select('WHERE {id} > 90', columns=columns))
+    assert data == values
 
 
-def test_upsert(monkeypatch):
+def test_upsert():
     """As it says on the tin."""
-    monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
-    monkeypatch.setattr(raw_table, '_db_transaction', _MOCK_DB_TRANSACTION)
-    _MOCK_CURSOR.sql_history = []
-    config = deepcopy(_MOCK_CONFIG)
+    config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    data = (
-        {"id": 91, "left":  3, "right":  4, "uid": 901, "metadata": [1, 2],    "name": "Harry"},
-        {"id": 92, "left":  5, "right":  6, "uid": 902, "metadata": [],        "name": "William"},
-        {"id": 93, "left":  7,              "uid": 903, "metadata": [3, 1, 2], "name": "Diana"}
-    )
-    rt.upsert(data, '{name}={EXCLUDED.name} || {temp}', {'temp': '_temp'}, ('uid', 'id'))
-    assert len(_MOCK_CURSOR.sql_history) == 4
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _UPSERT)):
-        assert _MOCK_CURSOR.sql_history[i] == sql_str
+    columns = ("id", "left", "right", "uid", "metadata", "name")
+    values = ((91, 3, 4, 901, [1, 2], "Harry"), (0, 1, 2, 201, [], "Diana"))
+    returning = rt.upsert(columns, values, '{name}={EXCLUDED.name} || {temp}', {'temp': '_temp'}, ('uid', 'id', 'name'))
+    row = rt.select('WHERE {id} = 0', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
+    assert returning == [(901, 91, 'Harry'), (100, 0, 'Diana_temp')]
+    assert  row == [(0, 1, 2, 100, None, "Diana_temp")]
 
 
-def test_update(monkeypatch):
+def test_update():
     """As it says on the tin."""
-    monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
-    monkeypatch.setattr(raw_table, '_db_transaction', _MOCK_DB_TRANSACTION)
-    _MOCK_CURSOR.sql_history = []
-    config = deepcopy(_MOCK_CONFIG)
+    config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    data = {"id": 1, "left": 3, "right": 4, "uid": 1, "metadata": [1, 2], "name": "Harry"}
-    rt.update(data, '{name}={name} || {temp}, left={entry.left}', '{id}={entry.id}', {'temp': '_temp'}, ('uid', 'id'))
-    assert len(_MOCK_CURSOR.sql_history) == 4
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _UPDATE)):
-        assert _MOCK_CURSOR.sql_history[i] == sql_str
+    returning = rt.update('{name}={name} || {new}', '{id}={qid}', {'qid':0, 'new': '_new'}, ('id', 'name'))
+    row = rt.select('WHERE {id} = 0', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
+    assert returning == [(0, 'root_new')]
+    assert row == [(0, 1, 2, 100, None, "root_new")]
 
 
-def test_delete(monkeypatch):
+def test_delete():
     """As it says on the tin."""
-    monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
-    monkeypatch.setattr(raw_table, '_db_transaction', _MOCK_DB_TRANSACTION)
-    _MOCK_CURSOR.sql_history = []
-    config = deepcopy(_MOCK_CONFIG)
+    config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    rt.delete('{id}={target}', {'target': 7}, ('uid', 'id'))
-    assert len(_MOCK_CURSOR.sql_history) == 4
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _DELETE)):
-        assert _MOCK_CURSOR.sql_history[i] == sql_str
+    returning = rt.delete('{id}={target}', {'target': 7}, ('uid', 'id'))
+    row = rt.select('WHERE {id} = 7', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
+    assert returning == [(107, 7)]
+    assert row == []
 
 
-def test_validate(monkeypatch):
+def test_validate():
     """As it says on the tin."""
-    monkeypatch.setattr(raw_table, '_sql_to_string', _MOCK_SQL_TO_STRING)
-    monkeypatch.setattr(raw_table, '_db_transaction', _MOCK_DB_TRANSACTION)
-    _MOCK_CURSOR.sql_history = []
-    config = deepcopy(_MOCK_CONFIG)
+    config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    data = (
-        {"id": 91, "left":  3, "right":  4, "uid": 901, "metadata": [1, 2],    "name": "Harry"},
-        {"id": 92, "left":  5, "right":  6, "uid": 902, "metadata": [],        "name": "William"},
-        {"id": 93, "left":  7,              "uid": 903, "metadata": [3, 1, 2], "name": "Diana"}
-    )
-    results = rt.validate(data)
-    assert len(results) == 3
+    columns = ('id', 'left', 'right', 'uid', 'metadata', 'name')
+    values = ((91, 3, 4, 901, [1, 2], "Harry"), (92, 5, 6, 902, [], "William"))
+    results = rt.validate(columns, values)
+    assert len(results) == 2
     assert all(results)
+
+
+def test_duplicate_table():
+    """Validate a the SQL sequence when a table exists."""
+    config1 = deepcopy(_CONFIG)
+    config2 = deepcopy(_CONFIG)
+    config2['delete_table'] = False
+    rt1 = raw_table(config1)
+    rt2 = raw_table(config2)
+    for t1, t2 in zip(rt1.select(columns=('updated',))[0], rt2.select(columns=('updated',))[0]):
+        assert t1 == t2
+    rt1.delete_table()
+    rt2.delete_table()

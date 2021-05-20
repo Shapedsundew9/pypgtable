@@ -8,7 +8,7 @@ from time import sleep
 from psycopg2 import sql, errors, ProgrammingError
 from cerberus import Validator
 from cerberus.errors import ValidationError
-from database import db_transaction, db_connect, db_exists, db_create
+from database import db_transaction, db_connect, db_exists, db_create, db_delete, db_disconnect
 from common import backoff_generator
 from validators import raw_table_config_validator
 from utils.text_token import text_token, register_token_code
@@ -18,10 +18,11 @@ _logger = getLogger(__name__)
 _logit = lambda:_logger.getEffectiveLevel() == DEBUG
 
 
-register_token_code("I05000", "SQL:\n{sql}")
+register_token_code("I05000", "SQL: {sql}")
 register_token_code("I05001", "Table {table} cannot be created as it already exists in database {dbname}.")
 register_token_code("I05002", "User {user} does not have privileges to create a table in database {dbname}.")
 register_token_code("I05003", "Table {table} in database {dbname} does not yet exist. Waiting {backoff:.2}s to retry.")
+register_token_code("I05004", "Adding data to table {table} from {file}.")
 register_token_code("E05000", "Configuration error: {error}")
 register_token_code("E05001", "{set} columns differ between DB {dbname} and table {table} configuration.")
 
@@ -36,11 +37,11 @@ _TABLE_CREATE_SQL = sql.SQL("CREATE TABLE {0} ({1})")
 _TABLE_INDEX_SQL = sql.SQL("CREATE INDEX {0} ON {1}")
 _TABLE_INDEX_COLUMN_SQL = sql.SQL("({0})") 
 _TABLE_DELETE_TABLE_SQL = sql.SQL("DROP TABLE IF EXISTS {0} CASCADE")
-_TABLE_RECURSIVE_SELECT = sql.SQL("WITH RECURSIVE rq AS (SELECT {0} FROM {1} {2} UNION SELECT {0} FROM {1} t WHERE {3}) SELECT * FROM rq")
+_TABLE_RECURSIVE_SELECT = sql.SQL("WITH RECURSIVE rq AS (SELECT {0} FROM {1} {2} UNION SELECT {3} FROM {1} t INNER JOIN rq r ON {4}) SELECT * FROM rq")
 _TABLE_SELECT_SQL = sql.SQL("SELECT {0} FROM {1} {2}")
 _TABLE_INSERT_SQL = sql.SQL("INSERT INTO {0} ({1}) VALUES {2} ON CONFLICT ")
 _TABLE_INSERT_CONFLICT_STR = "DO NOTHING"
-_TABLE_UPSERT_CONFLICT_STR = "DO UPDATE SET "
+_TABLE_UPSERT_CONFLICT_STR = "{0} DO UPDATE SET "
 _TABLE_UPDATE_SQL = sql.SQL("UPDATE {0} SET {1} WHERE {2}")
 _TABLE_DELETE_SQL = sql.SQL("DELETE FROM {0} WHERE {1}")
 _TABLE_RETURNING_SQL = sql.SQL(" RETURNING ")
@@ -72,6 +73,8 @@ class raw_table():
         self._columns = None
         self._pm, self._pm_columns, self._pm_sql = self._ptr_map_def()
         self._primary_key = self._get_primary_key()
+        if self.config['delete_db']: self.delete_db()
+        if not self.config['delete_db'] and self.config['delete_table']: self.delete_table()
         if not self._db_exists() and not self.config['create_db'] and not self.config['wait_for_db']:
             raise RuntimeError("DB does not exist, create_db is False and wait_for_db is False.")
         if not self._db_exists() and self.config['create_db']: self._create_db()
@@ -140,7 +143,7 @@ class raw_table():
         (sql.SQL): An partial SQL statement to be used in a recursive select statement.
         """
         pm_columns = set(self.config['ptr_map'].keys()) | set (self.config['ptr_map'].values())
-        pm_sql = [sql.Identifier('r.' + i) + sql.SQL("=") + sql.Identifier('t.' + r) for r, i in self.config['ptr_map'].items()]
+        pm_sql = [sql.SQL('r.') + sql.Identifier(r) + sql.SQL("=t.") + sql.Identifier(i) for r, i in self.config['ptr_map'].items()]
         pm_sql = sql.SQL(" OR ").join(pm_sql)
         return self.config['ptr_map'], pm_columns, pm_sql
 
@@ -151,6 +154,10 @@ class raw_table():
 
     def _create_db(self):
         return db_create(self.config['database']['dbname'], self.config['database'])
+
+
+    def delete_db(self):
+        return db_delete(self.config['database']['dbname'], self.config['database'])
 
 
     def _db_transaction(self, sql_str_iter, read=True, repeatable=False):
@@ -174,7 +181,10 @@ class raw_table():
     def _populate_table(self):
         """Add data to table after creation.
 
-        If a column is not present in a record it is populated with None.
+        Data is inserted into the table in batches of consecutive rows
+        that have the same keys defined.
+        This preserves order and allows columns to be set to NULL or
+        their DEFAULT values.
 
         Only executed if this instance of raw_table() created it.
         See self._create_table().
@@ -182,13 +192,22 @@ class raw_table():
         if not len(self) and self.config['data_files']:
             for data_file in self.config['data_files']:
                 abspath = join(self.config['data_file_folder'], data_file)
+                _logger.info(text_token({'I05004': {'table': self.config['table'], 'file': abspath}}) )
                 with open(abspath, "r") as file_ptr:
                     data = load(file_ptr)
+                    last_datum_keys = set()
+                    ordered_keys = tuple()
+                    current_batch = []
                     for datum in data:
-                        for column in self._columns:
-                            datum.setdefault(column, None)
-                self.insert(data)
-            
+                        if last_datum_keys == set(datum.keys()):
+                            current_batch.append([datum[k] for k in ordered_keys])
+                        else:
+                            if current_batch: self.insert(ordered_keys, current_batch)
+                            ordered_keys = tuple(datum.keys())
+                            current_batch = [[datum[k] for k in ordered_keys]]
+                            last_datum_keys = set(datum.keys())
+                    self.insert(ordered_keys, current_batch)
+
 
     # Get the table definition 
     def _table_definition(self):
@@ -245,6 +264,7 @@ class raw_table():
             if not definition['null']: sql_str += " NOT NULL"
             if definition['primary_key']: sql_str += " PRIMARY KEY"
             if definition['unique'] and not definition['primary_key']: sql_str += " UNIQUE"
+            if 'default' in definition: sql_str += " DEFAULT " + definition['default']
             self._columns.append(column)
             columns.append(sql.Identifier(column) + sql.SQL(sql_str))
 
@@ -284,39 +304,40 @@ class raw_table():
     
     def _sql_queries_transaction(self, sql_str_list, repeatable=False):
         if _logit(): _logger.debug(text_token({'I05000': {'sql': '\n'.join([self._sql_to_string(s) for s in sql_str_list])}}))
-        return (dbcur.fetchall() for dbcur in self._db_transaction(sql_str_list, repeatable))
+        return tuple((dbcur.fetchall() for dbcur in self._db_transaction(sql_str_list, repeatable)))
    
 
-    def recursive_select(self, query_strs, literals={}, columns=None, repeatable=False):
+    def recursive_select(self, query_str, literals={}, columns=None, repeatable=False):
         if columns is None: columns = self._columns
         if not (self._pm_columns <= set(columns)): raise ValueError("columns must be a the same or a superset of ptr_map columns.")
+        t_columns = sql.SQL('t.') + sql.SQL(', t.').join(map(sql.Identifier, columns))
         columns = sql.SQL(', ').join(map(sql.Identifier, columns))
         format_dict = self._format_dict(literals)
-        sql_str_list = [_TABLE_RECURSIVE_SELECT.format(columns, self._table, sql.SQL(q).format(**format_dict), self._pm_sql) for q in query_strs]
-        return self._sql_queries_transaction(sql_str_list, repeatable)
+        sql_str_list = [_TABLE_RECURSIVE_SELECT.format(columns, self._table, sql.SQL(query_str).format(**format_dict), t_columns, self._pm_sql)]
+        return self._sql_queries_transaction(sql_str_list, repeatable)[0]
 
 
-    def select(self, query_strs=['true'], literals={}, columns=None, repeatable=False):
+    def select(self, query_str='', literals={}, columns=None, repeatable=False):
         if columns is None: columns = self._columns
         columns = sql.SQL(', ').join(map(sql.Identifier, columns))
         format_dict = self._format_dict(literals)
-        sql_str_list = [_TABLE_SELECT_SQL.format(columns, self._table, sql.SQL(q).format(**format_dict)) for q in query_strs]
-        return self._sql_queries_transaction(sql_str_list, repeatable)
+        sql_str_list = [_TABLE_SELECT_SQL.format(columns, self._table, sql.SQL(query_str).format(**format_dict))]
+        return self._sql_queries_transaction(sql_str_list, repeatable)[0]
 
 
-    def insert(self, entries):
-        return self.upsert(entries, _TABLE_INSERT_CONFLICT_STR)
+    def insert(self, columns, values):
+        return self.upsert(columns, values, _TABLE_INSERT_CONFLICT_STR)
 
 
     def _format_dict(self, literals):
-        format_dict = {k: sql.Identifier(self.config['table'] + '.' + k) for k in self._columns}
+        format_dict = {k: sql.Identifier(k) for k in self._columns}
         format_dict.update({k: sql.Literal(v) for k, v in literals.items()})
         return format_dict
 
 
     # TODO: This could overflow an SQL statement size limit. In which case
     # should we use a COPY https://www.postgresql.org/docs/12/dml-insert.html
-    def upsert(self, entries, update_str=None, literals={}, returning=tuple()):
+    def upsert(self, columns, values, update_str=None, literals={}, returning=tuple()):
         """Upsert entries.
 
         If update_str is None each entry will be inserted or replace the existing entry on conflict.
@@ -339,20 +360,21 @@ class raw_table():
         -------
         (psycopg2.cursor or empty tuple)
         """
-        if not entries: return tuple()
-        if update_str is None: update_str = ",".join((_DEFAULT_UPDATE_STR.format(k) for k in entries[0].keys() if k != self._primary_key))
-        if update_str != _TABLE_INSERT_CONFLICT_STR: update_str = _TABLE_UPSERT_CONFLICT_STR + update_str
-        column_tuple = tuple(entries[0].keys())
-        columns = sql.SQL(",").join([sql.Identifier(k) for k in column_tuple])
-        values = sql.SQL(",").join((sql.SQL("({0})").format(sql.SQL(",").join((sql.Literal(e[c]) for c in column_tuple))) for e in entries))
+        if update_str is None: update_str = ",".join((_DEFAULT_UPDATE_STR.format(k) for k in columns if k != self._primary_key))
+        if update_str != _TABLE_INSERT_CONFLICT_STR:
+            if self._primary_key is None: raise ValueError('Can only upsert if a primary key is defined.')
+            update_str = _TABLE_UPSERT_CONFLICT_STR.format('({' + self._primary_key + '})') + update_str
+        columns_sql = sql.SQL(",").join([sql.Identifier(k) for k in columns])
+        values_sql = sql.SQL(",").join((sql.SQL("({0})").format(sql.SQL(",").join((sql.Literal(value) for value in row))) for row in values))
         format_dict = self._format_dict(literals)
-        format_dict.update({'EXCLUDED.' + k: sql.Identifier('EXCLUDED.' + k) for k in entries[0].keys()})
+        format_dict.update({'EXCLUDED.' + k: sql.SQL('EXCLUDED.') + sql.Identifier(k) for k in columns})
         update_sql = sql.SQL(update_str).format(**format_dict)
         if returning: update_sql += _TABLE_RETURNING_SQL + sql.SQL(',').join([sql.Identifier(column) for column in returning])
-        return self._db_transaction((_TABLE_INSERT_SQL.format(self._table, columns, values) + update_sql,), read=False)[0]
+        retval = self._db_transaction((_TABLE_INSERT_SQL.format(self._table, columns_sql, values_sql) + update_sql,), read=False)[0]
+        return retval.fetchall() if returning else retval
 
 
-    def update(self, entry, update_str, query_str, literals={}, returning=tuple()):
+    def update(self, update_str, query_str, literals={}, returning=tuple()):
         """Update entries.
 
         If update_str is None each entry will be inserted or replace the existing entry on conflict.
@@ -375,15 +397,14 @@ class raw_table():
         -------
         (psycopg2.cursor or empty tuple)
         """
-        if not entry: return tuple()
         format_dict = self._format_dict(literals)
-        format_dict.update({'entry.' + k: sql.Literal(v) for k, v in entry.items()})
         sql_str = _TABLE_UPDATE_SQL.format(self._table, sql.SQL(update_str).format(**format_dict), sql.SQL(query_str).format(**format_dict))
         if returning: sql_str += _TABLE_RETURNING_SQL +  sql.SQL(',').join([sql.Identifier(column) for column in returning])
-        return self._db_transaction((sql_str,), read=False)[0]
+        retval = self._db_transaction((sql_str,), read=False)[0]
+        return retval.fetchall() if returning else retval
 
 
-    def delete(self, query_str=['true'], literals={}, returning=tuple()):
+    def delete(self, query_str='', literals={}, returning=tuple()):
         """Delete rows from the table.
 
         If query_str is not specified all rows in the table are deleted.
@@ -404,10 +425,11 @@ class raw_table():
         format_dict = self._format_dict(literals)
         sql_str = _TABLE_DELETE_SQL.format(self._table, sql.SQL(query_str).format(**format_dict))
         if returning: sql_str += _TABLE_RETURNING_SQL + sql.SQL(',').join([sql.Identifier(column) for column in returning])
-        return self._db_transaction((sql_str,), read=False)[0]
+        retval = self._db_transaction((sql_str,), read=False)[0]
+        return retval.fetchall() if returning else retval
 
 
-    def validate(self, entries):
+    def validate(self, columns, values):
         """Validate entries.
 
         Entries are blindly validated (return True for all) if the table configuration
@@ -426,6 +448,6 @@ class raw_table():
                 schema_path = join(self.config['format_file_folder'], self.config['format_file'])
                 with open(schema_path, "r") as schema_file:
                     self._entry_validator = Validator(load(schema_file))
-            return tuple((self._entry_validator(entry) for entry in entries))
-        return (True,) * len(entries)
+            return tuple((self._entry_validator(dict(zip(columns, value))) for value in values))
+        return (True,) * len(values)
 

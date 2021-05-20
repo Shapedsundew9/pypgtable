@@ -94,6 +94,22 @@
             "description": "Validate format file folder, format file, data files folder & datafiles. Increases start up time."
         }
     },
+    "delete_db": {
+        "type": "boolean",
+        "default": false,
+        "check_with": "valid_delete_db",
+        "meta": {
+            "description": "If the DB exists DROP it. Requires create DB to be True."
+        }
+    },
+    "delete_table": {
+        "type": "boolean",
+        "default": false,
+        "check_with": "valid_delete_table",
+        "meta": {
+            "description": "If the table exists DROP it. Requires create table to be True."
+        }
+    },
     "create_db": {
         "type": "boolean",
         "default": false,

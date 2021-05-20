@@ -59,5 +59,12 @@
         "meta": {
             "description": "Column is indexed with the selected algorithm. PRIMARY KEY or UNIQUE columns cannot be additionally indexed."
         }
+    },
+    "default": {
+        "type": "string",
+        "maxlength": 256,
+        "meta": {
+            "description": "Default value of the column specified as an SQL string after 'DEFAULT ' in the CREATE TABLE statement."
+        }
     }
 }

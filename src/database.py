@@ -25,7 +25,7 @@ _logger = getLogger(__name__)
 
 register_token_code('W04000', 'Backing off connection re-attempt {attempts} for database {dbname} with config {config} for {backoff} seconds.')
 register_token_code('W04001', 'Unable to connect to database {dbname} with config {config}. Error: {error}.')
-register_token_code('W04002', 'Transaction attempt {attempt} of {total}: Unable to {rw} database {dbname} with error: {error}.')
+register_token_code('W04002', 'Transaction attempt {attempt} of {total}: Unable to {rw} database {dbname} with error code: {code} error: {error}.')
 register_token_code('W04003', '{attempts} transactions failed. Dropping database {dbname} connection and re-establishing. {reconnection} of {total}.')
 register_token_code('E04000', 'Transaction cannot complete to database {dbname}. See previous log lines for details.')
 register_token_code('I04000', 'Connected to postgresql database {dbname} with config {config}.')
@@ -41,7 +41,7 @@ _DB_TRANSACTION_ATTEMPTS = 3
 _DB_RECONNECTIONS = 3
 _DB_EXISTS_SQL = sql.SQL("SELECT datname FROM pg_database")
 _DB_CREATE_SQL = sql.SQL("CREATE DATABASE {}")
-_DB_DELETE_SQL = sql.SQL("DELETE DATABASE {}")
+_DB_DELETE_SQL = sql.SQL("DROP DATABASE IF EXISTS {}")
 
 
 def db_connect(dbname, config):
@@ -82,7 +82,7 @@ def db_disconnect(dbname, config):
 		'host' (str): Fully qualified host name of the DB server
 	}
 	"""
-	connection = _connections.get(config['host'], {'dbname': None})[dbname]
+	connection = _connections.get(config['host'], {dbname: None})[dbname]
 	if not connection is None:
 		try:
 			connection.close()
@@ -134,7 +134,7 @@ def db_reconnect(dbname, config):
 		backoff = next(backoff_gen)
 		attempts += 1
 		_logger.warning(text_token({'W04000':{'attempts': attempts, 'dbname': dbname,
-			'config':pformat(config, compact=True, sort_dicts=True), 'backoff': backoff}}))
+			'config':config, 'backoff': backoff}}))
 		sleep(backoff)
 	_connections.setdefault(config['host'], {})[dbname] = connection
 	return connection
@@ -169,9 +169,9 @@ def _connect_core(dbname, config):
 	except (InterfaceError, OperationalError) as e:
 		connection = None
 		_logger.warning(text_token({'W04001':{'dbname': dbname,
-			'config': pformat(config, compact=True, sort_dicts=True), 'error': e}}))
+			'config': config, 'error': e}}))
 	else:
-		_logger.info(text_token({'I04000':{'dbname': dbname, 'config': pformat(config, compact=True, sort_dicts=True)}}))
+		_logger.info(text_token({'I04000':{'dbname': dbname, 'config': config}}))
 	return connection
 
 
@@ -199,7 +199,7 @@ def db_exists(dbname, config):
 	connection = db_connect(config['maintenance_db'], config)
 	_logger.info(_DB_EXISTS_SQL.as_string(connection))
 	retval = (dbname,) in db_transaction(config['maintenance_db'], config, (_DB_EXISTS_SQL,))[0].fetchall()
-	_logger.info(text_token({'I04001': {'dbname': config['maintenance_db'], 'config': pformat(config, compact=True, sort_dicts=True),
+	_logger.info(text_token({'I04001': {'dbname': config['maintenance_db'], 'config': config,
 		'exists': ('DOES NOT', 'DOES')[retval]}}))
 	db_disconnect(config['maintenance_db'], config)
 	return retval
@@ -227,7 +227,7 @@ def db_create(dbname, config):
 	connection.autocommit = True
 	_logger.info(sql_str.as_string(connection))
 	db_transaction(config['maintenance_db'], config, (sql_str,), read=False)
-	_logger.info(text_token({'I04002': {'dbname': config['maintenance_db'], 'config': pformat(config, compact=True, sort_dicts=True)}}))
+	_logger.info(text_token({'I04002': {'dbname': config['maintenance_db'], 'config': config}}))
 	db_disconnect(config['maintenance_db'], config)
 
 
@@ -253,8 +253,8 @@ def db_delete(dbname, config):
 	connection = db_connect(config['maintenance_db'], config)
 	connection.autocommit = True
 	_logger.info(sql_str.as_string(connection))
-	db_transaction(dbname, config, (sql_str,), read=False)
-	_logger.info(text_token({'I04003':{'dbname': dbname, 'config': pformat(config, compact=True, sort_dicts=True)}}))
+	db_transaction(config['maintenance_db'], config, (sql_str,), read=False)
+	_logger.info(text_token({'I04003':{'dbname': dbname, 'config': config}}))
 	db_disconnect(config['maintenance_db'], config)
 
 		    
@@ -304,7 +304,7 @@ def db_transaction(dbname, config, sql_str_iter, read=True, repeatable=False):
 				except (InterfaceError, OperationalError) as e:
 					if not read: connection.rollback()
 					_logger.warning(text_token({'W04002':{'attempt': transaction_attempt, 'total': _DB_TRANSACTION_ATTEMPTS,   
-						'rw': ('write', 'read')[read], 'dbname': dbname, 'error': e}}))
+						'rw': ('write', 'read')[read], 'dbname': dbname, 'code': e.pgcode, 'error': e}}))
 					sleep(next(backoff_gen))
 					dbcur_list.clear()
 					if read and repeatable: connection.set_session(isolation_level=ISOLATION_LEVEL_DEFAULT)

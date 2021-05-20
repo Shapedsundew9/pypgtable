@@ -85,7 +85,19 @@ class _raw_table_config_validator(BaseValidator):
                 for datum in self._isjsonfile(field, abspath):
                     if not validator.validate(datum):
                         for e in validator._errors: self._error(field, self.str_errors(e))
-                        print(validator._errors)
+
+
+    def _check_with_valid_delete_db(self, field, value):
+        """Validate delete_db."""
+        if value and not self.document.get('create_db', False):
+            self._error(field, "delete_db == True requires create_db == True")
+
+
+    def _check_with_valid_delete_table(self, field, value):
+        """Validate delete_table."""
+        if value and not self.document.get('create_table', False):
+            self._error(field, "delete_table == True requires create_table == True")
+
 
 with open(join(dirname(__file__), "formats/raw_table_config_format.json"), "r") as file_ptr:
     raw_table_config_validator = _raw_table_config_validator(load(file_ptr))
