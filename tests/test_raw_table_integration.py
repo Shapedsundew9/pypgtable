@@ -4,7 +4,7 @@
 from copy import deepcopy
 from os.path import join, dirname
 from pypgtable.raw_table import raw_table
-from utils.base_logging import get_logger
+from pypgtable.utils.base_logging import get_logger
 
 
 _logger = get_logger(__file__, __name__)
