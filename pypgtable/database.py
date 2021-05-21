@@ -15,11 +15,10 @@ from psycopg2 import sql, connect, InterfaceError, OperationalError, Programming
 from psycopg2.extensions import ISOLATION_LEVEL_REPEATABLE_READ, ISOLATION_LEVEL_DEFAULT
 from .common import backoff_generator
 from utils.text_token import register_token_code, text_token
-from utils.text_token import text_token, register_token_code
 
 
 _connections = {}
-_logger = getLogger(__name__)
+_logger = getLogger('pypgtable')
 
 
 register_token_code('W04000', 'Backing off connection re-attempt {attempts} for database {dbname} with config {config} for {backoff} seconds.')
@@ -126,7 +125,7 @@ def db_reconnect(dbname, config):
 	-------
 	psycopg2.connection object with open connection.
 	"""
-	connection = _connections.get(config['host'], {'dbname': None})[dbname]
+	connection = _connections.get(config['host'], {dbname: None})[dbname]
 	if not connection is None: db_disconnect(dbname, config)
 	backoff_gen = backoff_generator(_INITIAL_DELAY, _BACKOFF_STEPS, _BACKOFF_FUZZ)
 	attempts = 0

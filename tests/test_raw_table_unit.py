@@ -1,35 +1,52 @@
 """Unit tests for raw_table.py."""
 
-import database
+from pypgtable import database
 from copy import deepcopy
 from psycopg2 import sql, errors, ProgrammingError, DatabaseError
-from raw_table import raw_table
+from pypgtable.raw_table import raw_table
 from utils.base_logging import get_logger
 
 
 _logger = get_logger(__file__, __name__)
 
 
-_SELECT_TABLE_EXISTS = ("SELECT EXISTS (SELECT FROM information_schema.tables WHERE "
-    "table_schema = 'public' AND table_name = ('test_table')")
-_SELECT_COLUMNS = "SELECT column_name, data_type FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ('test_table')"
-_CREATE_TABLE = ("CREATE TABLE ('test_table') (('name') VARCHAR, ('id') INTEGER NOT NULL PRIMARY KEY, "
-    "('left') INTEGER, ('right') INTEGER, ('uid') INTEGER NOT NULL UNIQUE, ('meta') INTEGER [] NOT NULL)")
+# Expected 'SQL' statements
+_DROP_TABLE = "DROP TABLE IF EXISTS ('test_table') CASCADE"
+_SELECT_TABLE_EXISTS = ("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = "
+    "'public' AND table_name = 'test_table')")
+_SELECT_COLUMNS = ("SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = "
+    "'public' AND table_name = 'test_table'")
+_CREATE_TABLE = ("CREATE TABLE ('test_table') (('name') VARCHAR, ('id') INTEGER NOT NULL PRIMARY KEY, ('left') "
+    "INTEGER, ('right') INTEGER, ('uid') INTEGER NOT NULL UNIQUE, ('updated') TIMESTAMP NOT NULL DEFAULT NOW(), "
+    "('metadata') INTEGER [])")
 _TABLE_LEN = "SELECT COUNT(*) FROM ('test_table')"
-_CREATE_UNIQUE_INDEX = "CREATE INDEX ('uid_index') ON ('test_table') USING 'btree'(('uid'))"
-_CREATE_INDEX = "CREATE INDEX ('meta_index') ON ('test_table') USING 'btree'(('meta'))"
-_SELECT = "SELECT ('uid'), ('left'), ('right') FROM ('test_table') WHERE ('test_table.id') = 7"
-_RECURSIVE_SELECT = ("WITH RECURSIVE rq AS (SELECT ('uid'), ('id'), ('left'), ('right') FROM ('test_table') WHERE "
-    "('test_table.id') = 7 UNION SELECT ('uid'), ('id'), ('left'), ('right') FROM ('test_table') t WHERE "
-    "('r.id')=('t.left') OR ('r.id')=('t.right')) SELECT * FROM rq")
+_CREATE_UNIQUE_INDEX = "CREATE INDEX ('uid_index') ON ('test_table') USING ('btree')(('uid'))"
+_CREATE_INDEX = "CREATE INDEX ('metadata_index') ON ('test_table') USING ('btree')(('metadata'))"
+_SELECT = "SELECT ('uid'), ('left'), ('right') FROM ('test_table') WHERE ('id') = 7"
+_RECURSIVE_SELECT = ("WITH RECURSIVE rq AS (SELECT ('uid'), ('id'), ('left'), ('right') FROM ('test_table') "
+    "WHERE ('id') = 7 UNION SELECT t.('uid'), t.('id'), t.('left'), t.('right') FROM ('test_table') t INNER "
+    "JOIN rq r ON r.('left')=t.('id') OR r.('right')=t.('id')) SELECT * FROM rq")
 _INSERT = ("INSERT INTO ('test_table') (('id'),('left'),('right'),('uid'),('metadata'),('name')) VALUES "
-    "(91,3,4,901,ARRAY[1,2],'Harry'),(92,5,6,902,'{}','William'),(93,7,903,ARRAY[3,1,2],'Diana') ON CONFLICT DO NOTHING")
+    "(91,3,4,901,ARRAY[1,2],'Harry'),(92,5,6,902,'{}','William') ON CONFLICT DO NOTHING")
 _UPSERT = ("INSERT INTO ('test_table') (('id'),('left'),('right'),('uid'),('metadata'),('name')) VALUES "
-    "(91,3,4,901,ARRAY[1,2],'Harry'),(92,5,6,902,'{}','William'),(93,7,903,ARRAY[3,1,2],'Diana') ON CONFLICT DO UPDATE SET "
-    "('test_table.name')=('EXCLUDED.name') || '_temp' RETURNING ('uid'),('id')")
-_UPDATE = ("UPDATE ('test_table') SET ('test_table.name')=('test_table.name') || '_temp', left=3 WHERE "
-    "('test_table.id')=1 RETURNING ('uid'),('id')")
-_DELETE = "DELETE FROM ('test_table') WHERE ('test_table.id')=7 RETURNING ('uid'),('id')"
+    "(91,3,4,901,ARRAY[1,2],'Harry'),(0,1,2,201,'{}','Diana') ON CONFLICT (('id')) DO UPDATE SET "
+    "('name')=EXCLUDED.('name') || '_temp' RETURNING ('uid'),('id'),('name')")
+_UPDATE = ("UPDATE ('test_table') SET ('name')=('name') || '_new' WHERE ('id')=0 RETURNING ('id'),('name')")
+_DELETE = "DELETE FROM ('test_table') WHERE ('id')=7 RETURNING ('uid'),('id')"
+
+
+# Expected groups of 'SQL' statements
+_TABLE_EXISTS_EXPECTED = (_DROP_TABLE, _SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS)
+_TABLE_DOES_NOT_EXIST_EXPECTED = (_DROP_TABLE,_SELECT_TABLE_EXISTS, _CREATE_TABLE, _CREATE_UNIQUE_INDEX,
+         _CREATE_INDEX, _TABLE_LEN, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS)
+_TABLE_DUPLICATE_EXPECTED = (_DROP_TABLE, _SELECT_TABLE_EXISTS, _CREATE_TABLE, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS)
+_TABLE_PRIVILEGE_EXPECTED = _TABLE_DUPLICATE_EXPECTED
+_SELECT_EXPECTED = (_DROP_TABLE, _SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _SELECT)
+_RECURSIVE_SELECT_EXPECTED = (_DROP_TABLE, _SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _RECURSIVE_SELECT)
+_INSERT_EXPECTED = (_DROP_TABLE, _SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _INSERT)
+_UPSERT_EXPECTED = (_DROP_TABLE, _SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _UPSERT)
+_UPDATE_EXPECTED = (_DROP_TABLE, _SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _UPDATE)
+_DELETE_EXPECTED = (_DROP_TABLE, _SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _DELETE)
 
 
 _MOCK_CONFIG = {
@@ -57,23 +74,34 @@ _MOCK_CONFIG = {
         'uid' : {
             'type': 'INTEGER',
             'index': 'btree',
-            'unique': True
+            'unique': True,
         },
-        'meta' : {
+        'updated': {
+            'type': 'TIMESTAMP',
+            'default': 'NOW()'
+        },
+        'metadata' : {
             'type': 'INTEGER',
             'array': True,
-            'index': 'btree'
+            'index': 'btree',
+            'null': True
         }
     },
     'ptr_map': {
         'left': 'id',
         'right': 'id'
     },
-    'format_file_folder': '../data',
+    'format_file_folder': 'data',
     'format_file': 'data_format.json',
-    'data_file_folder': '../data',
+    'data_file_folder': 'data',
     'data_files': ['data_values.json'],
-    'validate': True
+    'validate': True,
+    'delete_db': False,
+    'delete_table': True,
+    'create_db': True,
+    'create_table': True,
+    'wait_for_db': False,
+    'wait_for_table': False
 }
 
 
@@ -102,6 +130,7 @@ class _MOCK_CURSOR():
         """Store the SQL queries and append to the history."""
         self._data = tuple(sql_str_iter)
         _MOCK_CURSOR.sql_history.extend(self._data)
+        for s in self._data: print(s)
 
     def fetchone(self):
         """Mock fetchone().
@@ -146,10 +175,9 @@ def test_table_exists(monkeypatch):
     _MOCK_CURSOR.sql_history = []
     config = deepcopy(_MOCK_CONFIG)
     raw_table(config)
-    assert len(_MOCK_CURSOR.sql_history) == 3
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS)):
+    assert len(_MOCK_CURSOR.sql_history) == len(_TABLE_EXISTS_EXPECTED)
+    for i, sql_str in enumerate(_TABLE_EXISTS_EXPECTED):
         assert _MOCK_CURSOR.sql_history[i] == sql_str
-
 
 def test_table_does_not_exist(monkeypatch):
     """Validate a the SQL sequence when a table does not exist.
@@ -169,9 +197,8 @@ def test_table_does_not_exist(monkeypatch):
     _MOCK_CURSOR.sql_history = []
     config = deepcopy(_MOCK_CONFIG)
     raw_table(config)
-    assert len(_MOCK_CURSOR.sql_history) == 7
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _CREATE_TABLE, _CREATE_UNIQUE_INDEX,
-         _CREATE_INDEX, _TABLE_LEN, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS)):
+    assert len(_MOCK_CURSOR.sql_history) == len(_TABLE_DOES_NOT_EXIST_EXPECTED)
+    for i, sql_str in enumerate(_TABLE_DOES_NOT_EXIST_EXPECTED):
         assert _MOCK_CURSOR.sql_history[i] == sql_str
 
 
@@ -202,8 +229,8 @@ def test_table_does_not_exist_duplicate(monkeypatch):
     _MOCK_CURSOR.count = 0
     config = deepcopy(_MOCK_CONFIG)
     raw_table(config)
-    assert len(_MOCK_CURSOR.sql_history) == 4
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _CREATE_TABLE, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS)):
+    assert len(_MOCK_CURSOR.sql_history) == len(_TABLE_DUPLICATE_EXPECTED)
+    for i, sql_str in enumerate(_TABLE_DUPLICATE_EXPECTED):
         assert _MOCK_CURSOR.sql_history[i] == sql_str
 
 
@@ -234,8 +261,8 @@ def test_table_does_not_exist_privilege(monkeypatch):
     _MOCK_CURSOR.count = 0
     config = deepcopy(_MOCK_CONFIG)
     raw_table(config)
-    assert len(_MOCK_CURSOR.sql_history) == 4
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _CREATE_TABLE, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS)):
+    assert len(_MOCK_CURSOR.sql_history) == len(_TABLE_PRIVILEGE_EXPECTED)
+    for i, sql_str in enumerate(_TABLE_PRIVILEGE_EXPECTED):
         assert _MOCK_CURSOR.sql_history[i] == sql_str
 
 
@@ -287,9 +314,9 @@ def test_select(monkeypatch):
     _MOCK_CURSOR.sql_history = []
     config = deepcopy(_MOCK_CONFIG)
     rt = raw_table(config)
-    rt.select(['WHERE {id} = {seven}'], {'seven': 7}, columns=('uid', 'left', 'right'))
-    assert len(_MOCK_CURSOR.sql_history) == 4
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _SELECT)):
+    rt.select('WHERE {id} = {seven}', {'seven': 7}, columns=('uid', 'left', 'right'))
+    assert len(_MOCK_CURSOR.sql_history) == len(_SELECT_EXPECTED)
+    for i, sql_str in enumerate(_SELECT_EXPECTED):
         assert _MOCK_CURSOR.sql_history[i] == sql_str
 
 
@@ -300,9 +327,9 @@ def test_recursive_select(monkeypatch):
     _MOCK_CURSOR.sql_history = []
     config = deepcopy(_MOCK_CONFIG)
     rt = raw_table(config)
-    rt.recursive_select(['WHERE {id} = {seven}'], {'seven': 7}, columns=('uid', 'id', 'left', 'right'))
-    assert len(_MOCK_CURSOR.sql_history) == 4
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _RECURSIVE_SELECT)):
+    rt.recursive_select('WHERE {id} = {seven}', {'seven': 7}, columns=('uid', 'id', 'left', 'right'))
+    assert len(_MOCK_CURSOR.sql_history) == len(_RECURSIVE_SELECT_EXPECTED)
+    for i, sql_str in enumerate(_RECURSIVE_SELECT_EXPECTED):
         assert _MOCK_CURSOR.sql_history[i] == sql_str
 
 
@@ -313,14 +340,11 @@ def test_insert(monkeypatch):
     _MOCK_CURSOR.sql_history = []
     config = deepcopy(_MOCK_CONFIG)
     rt = raw_table(config)
-    data = (
-        {"id": 91, "left":  3, "right":  4, "uid": 901, "metadata": [1, 2],    "name": "Harry"},
-        {"id": 92, "left":  5, "right":  6, "uid": 902, "metadata": [],        "name": "William"},
-        {"id": 93, "left":  7,              "uid": 903, "metadata": [3, 1, 2], "name": "Diana"}
-    )
-    rt.insert(data)
-    assert len(_MOCK_CURSOR.sql_history) == 4
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _INSERT)):
+    columns = ("id", "left", "right", "uid", "metadata", "name")
+    values = ((91, 3, 4, 901, [1, 2], "Harry"), (92, 5, 6, 902, [], "William"))
+    rt.insert(columns, values)
+    assert len(_MOCK_CURSOR.sql_history) == len(_INSERT_EXPECTED)
+    for i, sql_str in enumerate(_INSERT_EXPECTED):
         assert _MOCK_CURSOR.sql_history[i] == sql_str
 
 
@@ -331,14 +355,11 @@ def test_upsert(monkeypatch):
     _MOCK_CURSOR.sql_history = []
     config = deepcopy(_MOCK_CONFIG)
     rt = raw_table(config)
-    data = (
-        {"id": 91, "left":  3, "right":  4, "uid": 901, "metadata": [1, 2],    "name": "Harry"},
-        {"id": 92, "left":  5, "right":  6, "uid": 902, "metadata": [],        "name": "William"},
-        {"id": 93, "left":  7,              "uid": 903, "metadata": [3, 1, 2], "name": "Diana"}
-    )
-    rt.upsert(data, '{name}={EXCLUDED.name} || {temp}', {'temp': '_temp'}, ('uid', 'id'))
-    assert len(_MOCK_CURSOR.sql_history) == 4
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _UPSERT)):
+    columns = ("id", "left", "right", "uid", "metadata", "name")
+    values = ((91, 3, 4, 901, [1, 2], "Harry"), (0, 1, 2, 201, [], "Diana"))
+    rt.upsert(columns, values, '{name}={EXCLUDED.name} || {temp}', {'temp': '_temp'}, ('uid', 'id', 'name'))
+    assert len(_MOCK_CURSOR.sql_history) == len(_UPSERT_EXPECTED)
+    for i, sql_str in enumerate(_UPSERT_EXPECTED):
         assert _MOCK_CURSOR.sql_history[i] == sql_str
 
 
@@ -349,10 +370,9 @@ def test_update(monkeypatch):
     _MOCK_CURSOR.sql_history = []
     config = deepcopy(_MOCK_CONFIG)
     rt = raw_table(config)
-    data = {"id": 1, "left": 3, "right": 4, "uid": 1, "metadata": [1, 2], "name": "Harry"}
-    rt.update(data, '{name}={name} || {temp}, left={entry.left}', '{id}={entry.id}', {'temp': '_temp'}, ('uid', 'id'))
-    assert len(_MOCK_CURSOR.sql_history) == 4
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _UPDATE)):
+    rt.update('{name}={name} || {new}', '{id}={qid}', {'qid':0, 'new': '_new'}, ('id', 'name'))
+    assert len(_MOCK_CURSOR.sql_history) == len(_UPDATE_EXPECTED)
+    for i, sql_str in enumerate(_UPDATE_EXPECTED):
         assert _MOCK_CURSOR.sql_history[i] == sql_str
 
 
@@ -364,8 +384,8 @@ def test_delete(monkeypatch):
     config = deepcopy(_MOCK_CONFIG)
     rt = raw_table(config)
     rt.delete('{id}={target}', {'target': 7}, ('uid', 'id'))
-    assert len(_MOCK_CURSOR.sql_history) == 4
-    for i, sql_str in enumerate((_SELECT_TABLE_EXISTS, _SELECT_TABLE_EXISTS, _SELECT_COLUMNS, _DELETE)):
+    assert len(_MOCK_CURSOR.sql_history) == len(_DELETE_EXPECTED)
+    for i, sql_str in enumerate(_DELETE_EXPECTED):
         assert _MOCK_CURSOR.sql_history[i] == sql_str
 
 
@@ -376,11 +396,8 @@ def test_validate(monkeypatch):
     _MOCK_CURSOR.sql_history = []
     config = deepcopy(_MOCK_CONFIG)
     rt = raw_table(config)
-    data = (
-        {"id": 91, "left":  3, "right":  4, "uid": 901, "metadata": [1, 2],    "name": "Harry"},
-        {"id": 92, "left":  5, "right":  6, "uid": 902, "metadata": [],        "name": "William"},
-        {"id": 93, "left":  7,              "uid": 903, "metadata": [3, 1, 2], "name": "Diana"}
-    )
-    results = rt.validate(data)
-    assert len(results) == 3
+    columns = ('id', 'left', 'right', 'uid', 'metadata', 'name')
+    values = ((91, 3, 4, 901, [1, 2], "Harry"), (92, 5, 6, 902, [], "William"))
+    results = rt.validate(columns, values)
+    assert len(results) == len(values)
     assert all(results)

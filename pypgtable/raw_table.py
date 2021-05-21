@@ -14,7 +14,7 @@ from .validators import raw_table_config_validator
 from utils.text_token import text_token, register_token_code
 
 
-_logger = getLogger(__name__)
+_logger = getLogger('pypgtable')
 _logit = lambda:_logger.getEffectiveLevel() == DEBUG
 
 
@@ -73,13 +73,13 @@ class raw_table():
         self._pm, self._pm_columns, self._pm_sql = self._ptr_map_def()
         self._primary_key = self._get_primary_key()
         if self.config['delete_db']: self.delete_db()
-        if not self.config['delete_db'] and self.config['delete_table']: self.delete_table()
-        if not self._db_exists() and not self.config['create_db'] and not self.config['wait_for_db']:
+        if not self.config['delete_db'] and self.config['delete_table']: self.delete_table() 
+        if not (dbexists := self._db_exists()) and not self.config['create_db'] and not self.config['wait_for_db']:
             raise RuntimeError("DB does not exist, create_db is False and wait_for_db is False.")
-        if not self._db_exists() and self.config['create_db']: self._create_db()
-        if not self._table_exists() and not self.config['create_table'] and not self.config['wait_for_table']:
+        if not dbexists and self.config['create_db']: self._create_db()
+        if not (tableexists := self._table_exists()) and not self.config['create_table'] and not self.config['wait_for_table']:
             raise RuntimeError("Table does not exist, create_table is False and wait_for_table is False.")
-        self._columns = self._create_table() if not self._table_exists() and self.config['create_table'] else self._table_definition()
+        self._columns = self._create_table() if not tableexists and self.config['create_table'] else self._table_definition()
     
 
     def __len__(self):
@@ -215,6 +215,9 @@ class raw_table():
             sleep(backoff)
         dbcur = self._db_transaction((_TABLE_DEFINITION_SQL.format(sql.Literal(self.config['table'])),))[0]
         columns = tuple((column[0] for column in dbcur.fetchall()))
+        if not 'schema' in self.config:
+            pass
+            # TODO: Create the schema from the table definition
         unmatched_set = set(columns) - set(self.config['schema'].keys())
         #TODO: Could validate types & properties too.
         if unmatched_set:

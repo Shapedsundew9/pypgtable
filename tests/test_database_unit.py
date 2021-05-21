@@ -1,14 +1,14 @@
 """Unit tests for the database.py module."""
 
-import psycopg2
-import database
-from database import _connect_core, db_reconnect, db_connect, db_disconnect, db_transaction
-from database import db_disconnect_all, _DB_TRANSACTION_ATTEMPTS, db_exists, db_create, db_delete
-from common import backoff_generator
-from psycopg2 import OperationalError
+from psycopg2 import sql, OperationalError
 from psycopg2.extensions import ISOLATION_LEVEL_DEFAULT, ISOLATION_LEVEL_REPEATABLE_READ
+from pypgtable import database
+from pypgtable.utils.base_logging import get_logger
+from pypgtable.utils.reference import sequential_reference
+from pypgtable.database import _connect_core, db_reconnect, db_connect, db_disconnect, db_transaction
+from pypgtable.database import  db_disconnect_all, _DB_TRANSACTION_ATTEMPTS, db_exists, db_create, db_delete
+from pypgtable.common import backoff_generator
 from utils.base_logging import get_logger
-from utils.reference import sequential_reference
 
 
 _logger = get_logger(__file__, __name__)
@@ -453,7 +453,7 @@ def test_db_exists_p0(monkeypatch):
     def mock_connect(*args, **kwargs): return mock_connection()
     def mock_as_string(*args, **kwargs): return "SQL string"
     monkeypatch.setattr(database, 'connect', mock_connect)
-    monkeypatch.setattr(psycopg2.sql.SQL, 'as_string', mock_as_string)
+    monkeypatch.setattr(sql.SQL, 'as_string', mock_as_string)
     assert db_exists(_MOCK_DBNAME, _MOCK_CONFIG)
 
 
@@ -473,7 +473,7 @@ def test_db_exists_p1(monkeypatch):
     def mock_connect(*args, **kwargs): return mock_connection()
     def mock_as_string(*args, **kwargs): return "SQL string"
     monkeypatch.setattr(database, 'connect', mock_connect)
-    monkeypatch.setattr(psycopg2.sql.SQL, 'as_string', mock_as_string)
+    monkeypatch.setattr(sql.SQL, 'as_string', mock_as_string)
     assert not db_exists("Does not exist", _MOCK_CONFIG)
 
 
@@ -495,7 +495,7 @@ def test_db_create_p0(monkeypatch):
     def mock_connect(*args, **kwargs): return mock_connection()
     def mock_as_string(*args, **kwargs): return "SQL string"
     monkeypatch.setattr(database, 'connect', mock_connect)
-    monkeypatch.setattr(psycopg2.sql.Composed, 'as_string', mock_as_string)
+    monkeypatch.setattr(sql.Composed, 'as_string', mock_as_string)
     db_create(_MOCK_DBNAME, _MOCK_CONFIG)
 
 
@@ -517,6 +517,6 @@ def test_db_delete_p0(monkeypatch):
     def mock_connect(*args, **kwargs): return mock_connection()
     def mock_as_string(*args, **kwargs): return "SQL string"
     monkeypatch.setattr(database, 'connect', mock_connect)
-    monkeypatch.setattr(psycopg2.sql.Composed, 'as_string', mock_as_string)
+    monkeypatch.setattr(sql.Composed, 'as_string', mock_as_string)
     db_delete(_MOCK_DBNAME, _MOCK_CONFIG)
 

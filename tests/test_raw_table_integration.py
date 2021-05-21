@@ -1,9 +1,8 @@
 """Unit tests for raw_table.py."""
 
-import database
+
 from copy import deepcopy
-from psycopg2 import sql, errors, ProgrammingError, DatabaseError
-from raw_table import raw_table
+from pypgtable.raw_table import raw_table
 from utils.base_logging import get_logger
 
 
@@ -52,9 +51,9 @@ _CONFIG = {
         'left': 'id',
         'right': 'id'
     },
-    'format_file_folder': '../data',
+    'format_file_folder': 'data',
     'format_file': 'data_format.json',
-    'data_file_folder': '../data',
+    'data_file_folder': 'data',
     'data_files': ['data_values.json'],
     'validate': True,
     'delete_db': False,
@@ -140,7 +139,7 @@ def test_validate():
     columns = ('id', 'left', 'right', 'uid', 'metadata', 'name')
     values = ((91, 3, 4, 901, [1, 2], "Harry"), (92, 5, 6, 902, [], "William"))
     results = rt.validate(columns, values)
-    assert len(results) == 2
+    assert len(results) == len(values)
     assert all(results)
 
 
