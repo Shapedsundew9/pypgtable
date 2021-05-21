@@ -1,10 +1,10 @@
 """Unit tests for raw_table.py."""
 
-from pypgtable import database
 from copy import deepcopy
+from os.path import join, dirname
 from psycopg2 import sql, errors, ProgrammingError, DatabaseError
 from pypgtable.raw_table import raw_table
-from utils.base_logging import get_logger
+from pypgtable.utils.base_logging import get_logger
 
 
 _logger = get_logger(__file__, __name__)
@@ -91,9 +91,9 @@ _MOCK_CONFIG = {
         'left': 'id',
         'right': 'id'
     },
-    'format_file_folder': 'data',
+    'format_file_folder': join(dirname(__file__), 'data'),
     'format_file': 'data_format.json',
-    'data_file_folder': 'data',
+    'data_file_folder': join(dirname(__file__), 'data'),
     'data_files': ['data_values.json'],
     'validate': True,
     'delete_db': False,

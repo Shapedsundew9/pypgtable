@@ -2,6 +2,7 @@
 
 
 from copy import deepcopy
+from os.path import join, dirname
 from pypgtable.raw_table import raw_table
 from utils.base_logging import get_logger
 
@@ -51,9 +52,9 @@ _CONFIG = {
         'left': 'id',
         'right': 'id'
     },
-    'format_file_folder': 'data',
+    'format_file_folder': join(dirname(__file__), 'data'),
     'format_file': 'data_format.json',
-    'data_file_folder': 'data',
+    'data_file_folder': join(dirname(__file__), 'data'),
     'data_files': ['data_values.json'],
     'validate': True,
     'delete_db': False,

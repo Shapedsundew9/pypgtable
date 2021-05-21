@@ -397,10 +397,10 @@ class raw_table():
         values  (iter(tuple/list)): Iterable of rows (ordered iterables) with values in the order as columns.
         update_str (str): Update SQL: SQL after 'UPDATE SET ' using '{column/literal}' for identifiers/literals.
             e.g. '{column1} = {EXCLUDED.column1} + {one}' where 'column1' is a column name and 'one' is a key
-            in literals. Prepend 'EXCLUDED.' to read the existing value. If entries = [{'column1': 'example'}], 
-            literals = {'one': 1} and the table name is 'test_table' the example update_str would result in 
-            the following SQL:
-                INSERT INTO "test_table" "column1" VALUES('example') ON CONFLICT DO 
+            in literals. Prepend 'EXCLUDED.' to read the existing value. If columns = ['column1'] and
+            values = [(10,)], literals = {'one': 1} and the table name is 'test_table' the example update_str 
+            would result in the following SQL:
+                INSERT INTO "test_table" "column1" VALUES(10) ON CONFLICT DO 
                     UPDATE SET "column1" = EXCLUDED."column1" + 1
         literals (dict): Keys are labels used in update_str. Values are literals to replace the labels.
         returning (iter): The columns to be returned on update. If None or empty no columns will be returned.
@@ -437,21 +437,18 @@ class raw_table():
 
 
     def update(self, update_str, query_str, literals={}, returning=tuple()):
-        """Update entries.
+        """Update rows.
 
-        If update_str is None each entry will be inserted or replace the existing entry on conflict.
-        In this case literals is not used.
+        Each row matching the query_str will be updated by the update_str.
 
         Args
         ----
-        entries (list(dict)): Keys are column names. Values are values to insert or use in update.
-        update_str (str): Update SQL: SQL after 'UPDATE SET ' using '{column/literal}' for identifiers/literals.
-            e.g. '{column1} = {EXCLUDED.column1} + {one}' where 'column1' is a column name and 'one' is a key
-            in literals. The table identifier will be appended to any column names. Prepend 'EXCLUDED.' to read
-            the existing value. If entries = [{'column1': 'example'}], literals = {'one': 1} and the table name
-            is 'test_table' the example update_str would result in the following SQL:
-                INSERT INTO "test_table" ("column1") VALUES('example') ON CONFLICT DO 
-                    UPDATE SET "test_table.column1" = "EXCLUDED.column1" + 1
+        update_str (str): Update SQL: SQL after 'SET ' using '{column/literal}' for identifiers/literals.
+            e.g. '{column1} = {column1} + {one}' where 'column1' is a column name and 'one' is a key
+            in literals. The table identifier will be appended to any column names. If literals = 
+            {'one': 1, 'nine': 9}, query_str = 'WHERE {column2} = {nine}' and the table name is 'test_table' the 
+            example update_str would result in the following SQL:
+                UPDATE "test_table" SET "column1" = "column1" + 1 WHERE "column2" = 9
         literals (dict): Keys are labels used in update_str. Values are literals to replace the labels.
         returning (iter): An iterable of column names to return for each updated row.
 
