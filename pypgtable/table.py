@@ -5,8 +5,8 @@ from copy import deepcopy
 from os.path import join
 from json import load
 from logging import getLogger
-from .raw_table import raw_table
 from cerberus import Validator
+from .raw_table import raw_table
 
 
 _logger = getLogger('pypgtable')

@@ -5,7 +5,7 @@ from copy import deepcopy
 from cerberus import Validator, SchemaError
 from json import load
 from os.path import dirname, join
-from utils.base_validator import BaseValidator
+from .utils.base_validator import BaseValidator
 
 
 with open(join(dirname(__file__), "formats/database_config_format.json"), "r") as file_ptr:

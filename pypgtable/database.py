@@ -14,7 +14,7 @@ from time import sleep
 from psycopg2 import sql, connect, InterfaceError, OperationalError, ProgrammingError, errors
 from psycopg2.extensions import ISOLATION_LEVEL_REPEATABLE_READ, ISOLATION_LEVEL_DEFAULT
 from .common import backoff_generator
-from utils.text_token import register_token_code, text_token
+from .utils.text_token import register_token_code, text_token
 
 
 _connections = {}
