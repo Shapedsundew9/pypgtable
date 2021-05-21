@@ -103,8 +103,9 @@ class raw_table():
         -------
         (str) column name of the primary key or None if there is no primary key.
         """
-        for k, v in self.config['schema'].items():
-            if v.get('primary_key', False): return k
+        if 'schema' in self.config:
+            for k, v in self.config['schema'].items():
+                if v.get('primary_key', False): return k
         return None
 
 
@@ -141,6 +142,7 @@ class raw_table():
 
 
     def delete_db(self):
+        """Delete the database."""
         return db_delete(self.config['database']['dbname'], self.config['database'])
 
 
@@ -183,6 +185,18 @@ class raw_table():
 
 
     def batch_dict_data(self, data):
+        """Generate to break up an iterable of dictionaries into batches with the same keys.
+
+        The order of dictionaries in the iterable is preserved (if it is ordered).     
+
+        Args
+        ----
+        data (iter(dict)): Each dict is a subset of a table row.
+
+        Returns
+        -------
+        tuple(keys), (list(list)): A consectutive batch of rows with the same keys.
+        """
         last_datum_keys = set()
         ordered_keys = tuple()
         current_batch = []
@@ -218,6 +232,7 @@ class raw_table():
         if not 'schema' in self.config:
             pass
             # TODO: Create the schema from the table definition
+            # Set self._primary_key
         unmatched_set = set(columns) - set(self.config['schema'].keys())
         #TODO: Could validate types & properties too.
         if unmatched_set:
@@ -288,6 +303,7 @@ class raw_table():
 
 
     def delete_table(self):
+        """Delete the table."""
         sql_str = _TABLE_DELETE_TABLE_SQL.format(self._table)
         _logger.info(text_token({'I05000': {'sql': self._sql_to_string(sql_str)}}))
         self._db_transaction((sql_str,), read=False)
@@ -299,6 +315,23 @@ class raw_table():
    
 
     def select(self, query_str='', literals={}, columns=None, repeatable=False):
+        """Select columns to return for rows matching query_str.
+
+        Args
+        ----
+        query_str (str): Query SQL: SQL starting 'WHERE ' using '{column/literal}' for identifiers/literals.
+            e.g. '{column1} = {one} ORDER BY {column1} ASC' where 'column1' is a column name and 'one' is a key
+            in literals. If literals = {'one': 1}, columns = ('column1', 'column3') and the table name is 
+            'test_table' the example query_str would result in the following SQL:
+                SELECT "column1", "column3" FROM "test_table" WHERE "column1" = 1 ORDER BY "column1" ASC
+        literals (dict): Keys are labels used in query_str. Values are literals to replace the labels.
+        columns (iter): The columns to be returned on update. If None defined all columns are returned.
+        repeatable (bool): If True select transaction is done with repeatable read isolation.
+
+        Returns
+        -------
+        (list(tuple)): An list of the values specified by columns for the specified query_str.
+        """
         if columns is None: columns = self._columns
         columns = sql.SQL(', ').join(map(sql.Identifier, columns))
         format_dict = self._format_dict(literals)
@@ -307,6 +340,34 @@ class raw_table():
 
 
     def recursive_select(self, query_str, literals={}, columns=None, repeatable=False):
+        """Recursive select of columns to return for rows matching query_str.
+
+        Recursion is defined by the ptr_map (pointer map) in the table config. 
+        If the rows in the table define nodes in a graph then the pointer map defines
+        the edges between nodes.
+
+        self.config['ptr_map'] is of the form {
+            "column X": "column Y",
+            ...
+        }
+        where column X contains a reference to a node identified by column Y.
+
+        Recursive select will return all the rows defined by the query_str plus the union of any rows
+        they point to and the rows those rows point to...recursively until no references are left (or
+        are not in the table).
+
+        Args
+        ----
+        query_str (str): Query SQL: See select() for details.
+        literals (dict): Keys are labels used in query_str. Values are literals to replace the labels.
+        columns (iter): The columns to be returned on update. If None defined all columns are returned.
+        repeatable (bool): If True select transaction is done with repeatable read isolation.
+
+        Returns
+        -------
+        (list(tuple)): An list of the values specified by columns for the specified recursive query_str
+            and pointer map.
+        """
         if columns is None: columns = self._columns
         if not (self._pm_columns <= set(columns)): raise ValueError("columns must be a the same or a superset of ptr_map columns.")
         t_columns = sql.SQL('t.') + sql.SQL(', t.').join(map(sql.Identifier, columns))
@@ -325,28 +386,31 @@ class raw_table():
     # TODO: This could overflow an SQL statement size limit. In which case
     # should we use a COPY https://www.postgresql.org/docs/12/dml-insert.html
     def upsert(self, columns, values, update_str=None, literals={}, returning=tuple()):
-        """Upsert entries.
+        """Upsert values.
 
         If update_str is None each entry will be inserted or replace the existing entry on conflict.
         In this case literals is not used.
 
         Args
         ----
-        entries (list(dict)): Keys are column names. Values are values to insert or use in update.
+        columns (iter(str)): Column names for each of the rows in values.
+        values  (iter(tuple/list)): Iterable of rows (ordered iterables) with values in the order as columns.
         update_str (str): Update SQL: SQL after 'UPDATE SET ' using '{column/literal}' for identifiers/literals.
             e.g. '{column1} = {EXCLUDED.column1} + {one}' where 'column1' is a column name and 'one' is a key
-            in literals. The table identifier will be appended to any column names. Prepend 'EXCLUDED.' to read
-            the existing value. If entries = [{'column1': 'example'}], literals = {'one': 1} and the table name
-            is 'test_table' the example update_str would result in the following SQL:
-                INSERT INTO "test_table" ("column1") VALUES('example') ON CONFLICT DO 
-                    UPDATE SET "test_table.column1" = "EXCLUDED.column1" + 1
+            in literals. Prepend 'EXCLUDED.' to read the existing value. If entries = [{'column1': 'example'}], 
+            literals = {'one': 1} and the table name is 'test_table' the example update_str would result in 
+            the following SQL:
+                INSERT INTO "test_table" "column1" VALUES('example') ON CONFLICT DO 
+                    UPDATE SET "column1" = EXCLUDED."column1" + 1
         literals (dict): Keys are labels used in update_str. Values are literals to replace the labels.
-        returning (iter): An iterable of column names to return for each updated row.
+        returning (iter): The columns to be returned on update. If None or empty no columns will be returned.
 
         Returns
         -------
-        (psycopg2.cursor or empty tuple)
+        (list(tuple)): An list of the values specified by returning for each updated row or [] if returning is
+            an empty iterable or None.
         """
+        if returning is None: returning=tuple()
         if update_str is None: update_str = ",".join((_DEFAULT_UPDATE_STR.format(k) for k in columns if k != self._primary_key))
         if update_str != _TABLE_INSERT_CONFLICT_STR:
             if self._primary_key is None: raise ValueError('Can only upsert if a primary key is defined.')
@@ -362,6 +426,13 @@ class raw_table():
 
 
     def insert(self, columns, values):
+        """Insert values.
+
+        Args
+        ----
+        columns (iter(str)): Column names for each of the rows in values.
+        values  (iter(tuple/list)): Iterable of rows (ordered iterables) with values in the order as columns.
+        """
         self.upsert(columns, values, _TABLE_INSERT_CONFLICT_STR)
 
 
@@ -386,8 +457,10 @@ class raw_table():
 
         Returns
         -------
-        (psycopg2.cursor or empty tuple)
+        (list(tuple)): An list of the values specified by returning for each updated row or [] if returning is
+            an empty iterable or None.
         """
+        if returning is None: returning=tuple()
         format_dict = self._format_dict(literals)
         sql_str = _TABLE_UPDATE_SQL.format(self._table, sql.SQL(update_str).format(**format_dict), sql.SQL(query_str).format(**format_dict))
         if returning: sql_str += _TABLE_RETURNING_SQL +  sql.SQL(',').join([sql.Identifier(column) for column in returning])
@@ -411,8 +484,10 @@ class raw_table():
 
         Returns
         -------
-        (psycopg2.cursor)
+        (list(tuple)): An list of the values specified by returning for each updated row or [] if returning is
+            an empty iterable or None.
         """
+        if returning is None: returning=tuple()
         format_dict = self._format_dict(literals)
         sql_str = _TABLE_DELETE_SQL.format(self._table, sql.SQL(query_str).format(**format_dict))
         if returning: sql_str += _TABLE_RETURNING_SQL + sql.SQL(',').join([sql.Identifier(column) for column in returning])

@@ -84,38 +84,190 @@ class table():
 
 
     def decode_values_to_dict(self, columns, values):
+        """Create a list of dicts with columns keys and decoded values from values.
+
+        The order of the dicts in the returned list is the same as the rows of values in values.
+        Each value is decoded by the registered conversion function (see register_conversion()) or
+        unchanged if no conversion has been registered.
+
+        Args
+        ----
+        columns (iter(str)): Column names for each of the rows in values.
+        values  (iter(tuple/list)): Iterable of rows (ordered iterables) with values in the order as columns.
+
+        Returns
+        -------
+        list(dict)
+        """
         return [{column: self._conversions[column]['decode'](value) for column, value in zip(columns, row)} for row in values]
 
 
     def decode_values_to_list(self, columns, values):
+        """Create a list of lists with columns keys and decoded values from values.
+
+        The order of the sub-lists in the returned list is the same as the rows of values in values.
+        Each value is decoded by the registered conversion function (see register_conversion()) or
+        unchanged if no conversion has been registered.
+
+        Args
+        ----
+        columns (iter(str)): Column names for each of the rows in values.
+        values  (iter(tuple/list)): Iterable of rows (ordered iterables) with values in the order as columns.
+
+        Returns
+        -------
+        list(list)
+        """
         return [[self._conversions[column]['decode'](value) for column, value in zip(columns, row)] for row in values]
 
 
     def decode_values_to_tuple(self, columns, values):
+        """Create a list of tuples with columns keys and decoded values from values.
+
+        The order of the tuples in the returned list is the same as the rows of values in values.
+        Each value is decoded by the registered conversion function (see register_conversion()) or
+        unchanged if no conversion has been registered.
+
+        Args
+        ----
+        columns (iter(str)): Column names for each of the rows in values.
+        values  (iter(tuple/list)): Iterable of rows (ordered iterables) with values in the order as columns.
+
+        Returns
+        -------
+        list(tuple)
+        """
         return [tuple((self._conversions[column]['decode'](value) for column, value in zip(columns, row))) for row in values]
 
 
     def encode_values_to_tuple(self, columns, values):
+        """Create a list of tuples with columns keys and encoded values from values.
+
+        The order of the tuples in the returned list is the same as the rows of values in values.
+        Each value is encoded by the registered conversion function (see register_conversion()) or
+        unchanged if no conversion has been registered.
+
+        Args
+        ----
+        columns (iter(str)): Column names for each of the rows in values.
+        values  (iter(tuple/list)): Iterable of rows (ordered iterables) with values in the order as columns.
+
+        Returns
+        -------
+        list(tuple)
+        """
         return [tuple((self._conversions[column]['encode'](value) for column, value in zip(columns, row))) for row in values]
 
 
     def encode_value(self, column, value):
+        """Encode value using the registered conversion function for column.
+
+        If no conversion function is registered value is returned unchanged.
+        This function is provided to create encoded literals in query functions.
+
+        Args
+        ----
+        column (str): Column name for value.
+        value  (obj): Value to encode.
+
+        Returns
+        -------
+        (obj): Encoded value
+        """
         return self._conversions[column]['encode'](value)
 
 
     def select(self, query_str='', literals={}, columns=None, repeatable=False, container='dict'):
+        """Select columns to return for rows matching query_str.
+
+        Args
+        ----
+        query_str (str): Query SQL: SQL starting 'WHERE ' using '{column/literal}' for identifiers/literals.
+            e.g. '{column1} = {one} ORDER BY {column1} ASC' where 'column1' is a column name and 'one' is a key
+            in literals. If literals = {'one': 1}, columns = ('column1', 'column3') and the table name is 
+            'test_table' the example query_str would result in the following SQL:
+                SELECT "column1", "column3" FROM "test_table" WHERE "column1" = 1 ORDER BY "column1" ASC
+        literals (dict): Keys are labels used in query_str. Values are literals to replace the labels.
+            NOTE: Literal values for encoded columns must be encoded. See encode_value(). 
+        columns (iter): The columns to be returned on update. If None defined all columns are returned.
+        repeatable (bool): If True select transaction is done with repeatable read isolation.
+        container (str): Defines the type of container in the returned list. Set as either 'list', 'tuple'
+            or any other value to return dicts. 
+
+        Returns
+        -------
+        (list('container')): An list of the values specified by columns for the specified query_str.
+        """
         if columns is None: columns = self.raw._columns
         values = self.raw.select(query_str, literals, columns, repeatable)
         return self._return_container(columns, values, container)
 
 
     def recursive_select(self, query_str='', literals={}, columns=None, repeatable=False, container='dict'):
+        """Recursive select of columns to return for rows matching query_str.
+
+        Recursion is defined by the ptr_map (pointer map) in the table config. 
+        If the rows in the table define nodes in a graph then the pointer map defines
+        the edges between nodes.
+
+        self.config['ptr_map'] is of the form {
+            "column X": "column Y",
+            ...
+        }
+        where column X contains a reference to a node identified by column Y.
+
+        Recursive select will return all the rows defined by the query_str plus the union of any rows
+        they point to and the rows those rows point to...recursively until no references are left (or
+        are not in the table).
+
+        Args
+        ----
+        query_str (str): Query SQL: See select() for details.
+        literals (dict): Keys are labels used in query_str. Values are literals to replace the labels.
+            NOTE: Literal values for encoded columns must be encoded. See encode_value(). 
+        columns (iter): The columns to be returned on update. If None defined all columns are returned.
+        repeatable (bool): If True select transaction is done with repeatable read isolation.
+        container (str): Defines the type of container in the returned list. Set as either 'list', 'tuple'
+            or any other value to return dicts. 
+
+        Returns
+        -------
+        (list('container')): An list of the values specified by columns for the specified recursive query_str
+            and pointer map.
+        """
         if columns is None: columns = self.raw._columns
         values = self.raw.recursive_select(query_str, literals, columns, repeatable)
         return self._return_container(columns, values, container)
 
 
     def upsert(self, values_dict, update_str=None, literals={}, returning=tuple(), container='dict'):
+        """Upsert values.
+
+        If update_str is None each entry will be inserted or replace the existing entry on conflict.
+        In this case literals is not used.
+
+        Args
+        ----
+        values_dict (iter(dict)): Keys are column names. Values will be encoded by the registered conversion
+            function (if any).
+        update_str (str): Update SQL: SQL after 'UPDATE SET ' using '{column/literal}' for identifiers/literals.
+            e.g. '{column1} = {EXCLUDED.column1} + {one}' where 'column1' is a column name and 'one' is a key
+            in literals. Prepend 'EXCLUDED.' to read the existing value. If values_dict=({'column1': 10},),
+            literals = {'one': 1} and the table name is 'test_table' the example update_str 
+            would result in the following SQL:
+                INSERT INTO "test_table" "column1" VALUES(10) ON CONFLICT DO 
+                    UPDATE SET "column1" = EXCLUDED."column1" + 1
+        literals (dict): Keys are labels used in update_str. Values are literals to replace the labels.
+            NOTE: Literal values for encoded columns must be encoded. See encode_value(). 
+        returning (iter): The columns to be returned on update. If None or empty no columns will be returned.
+        container (str): Defines the type of container in the returned list. Set as either 'list', 'tuple'
+            or any other value to return dicts. 
+
+        Returns
+        -------
+        (list('container')): An list of the values specified by returning for each updated row or [] if returning is
+            an empty iterable or None.
+        """
         retval = []
         for columns, values in self.raw.batch_dict_data(values_dict):
             encoded_values = self.encode_values_to_tuple(columns, values)
@@ -124,17 +276,68 @@ class table():
 
 
     def insert(self, values_dict):
+        """Insert values.
+
+        Args
+        ----
+        values_dict (iter(dict)): Keys are column names. Values will be encoded by the registered conversion
+            function (if any).
+        """
         for columns, values in self.raw.batch_dict_data(values_dict):
             encoded_values = self.encode_values_to_tuple(columns, values)
             self.raw.insert(columns, encoded_values)
 
 
     def update(self, update_str, query_str, literals={}, returning=tuple(), container='dict'):
+        """Update rows.
+
+        Each row matching the query_str will be updated by the update_str.
+
+        Args
+        ----
+        update_str (str): Update SQL: SQL after 'SET ' using '{column/literal}' for identifiers/literals.
+            e.g. '{column1} = {column1} + {one}' where 'column1' is a column name and 'one' is a key
+            in literals. The table identifier will be appended to any column names. If literals = 
+            {'one': 1, 'nine': 9}, query_str = 'WHERE {column2} = {nine}' and the table name is 'test_table' the 
+            example update_str would result in the following SQL:
+                UPDATE "test_table" SET "column1" = "column1" + 1 WHERE "column2" = 9
+        literals (dict): Keys are labels used in update_str. Values are literals to replace the labels.
+            NOTE: Literal values for encoded columns must be encoded. See encode_value(). 
+        returning (iter): An iterable of column names to return for each updated row.
+        container (str): Defines the type of container in the returned list. Set as either 'list', 'tuple'
+            or any other value to return dicts. 
+
+        Returns
+        -------
+        (list('container')): An list of the values specified by returning for each updated row or [] if returning is
+            an empty iterable or None.
+        """
         retval = self.raw.update(update_str, query_str, literals, returning)
         return self._return_container(returning, retval, container)
 
 
     def delete(self, query_str, literals={}, returning=tuple(), container='dict'):
+        """Delete rows from the table.
+
+        If query_str is not specified all rows in the table are deleted.
+
+        Args
+        ----
+        query_str (str): Query SQL: SQL after 'DELETE FROM table WHERE ' using '{column/literal}' for identifiers/literals.
+            e.g. '{column1} = {value}' where 'column1' is a column name, literals = {'value': 72}, ret=False and the table name
+            is 'test_table' the example query_str would result in the following SQL:
+                DELETE FROM "test_table" WHERE "column1" = 72
+        literals (dict): Keys are labels used in update_str. Values are literals to replace the labels.
+            NOTE: Literal values for encoded columns must be encoded. See encode_value(). 
+        returning (iter): An iterable of column names to return for each deleted row.
+        container (str): Defines the type of container in the returned list. Set as either 'list', 'tuple'
+            or any other value to return dicts. 
+
+        Returns
+        -------
+        (list('container')): An list of the values specified by returning for each updated row or [] if returning is
+            an empty iterable or None.
+        """
         retval = self.raw.delete(query_str, literals, returning)
         return self._return_container(returning, retval, container)
 
@@ -144,10 +347,12 @@ class table():
 
         Entries are blindly validated (return True for all) if the table configuration
         does not have a format_file defined.
+        NOTE: The Validator format must be defined for the decoded values. If the format
+        is for encoded values use self.raw.validate().
 
         Args
         ----
-        entries (list(dict)): List of entries to validate.
+        values_dict (iter(dict)): Keys are column names. 
 
         Returns
         -------
