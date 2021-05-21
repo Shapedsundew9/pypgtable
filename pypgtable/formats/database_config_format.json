@@ -23,7 +23,7 @@
     },
     "password": {
         "type": "string",
-        "default": "postgres"
+        "default": ""
     },
     "port": {
         "type": "integer",
@@ -33,5 +33,11 @@
     "maintenance_db": {
         "type": "string",
         "default": "postgres"
+    },
+    "retries": {
+        "type": "integer",
+        "default": 0,
+        "min": 0,
+        "max": 2147483647
     }
 }

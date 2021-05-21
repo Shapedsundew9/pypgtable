@@ -14,7 +14,13 @@ from pypgtable.utils.base_logging import get_logger
 _logger = get_logger(__file__, __name__)
 
 
-_MOCK_CONFIG = {'host': '_host', 'port': '_port', 'user': '_user', 'password': '_password', 'maintenance_db': '_maintenance_db'}
+_MOCK_CONFIG = {
+    'host': '_host',
+    'port': '_port',
+    'user': '_user',
+    'password': '_password',
+    'maintenance_db': '_maintenance_db',
+    'retries': 100000}
 _MOCK_DBNAME = '_dbname'
 _MOCK_VALUE_1 = 1234
 _MOCK_VALUE_2 = 4321
@@ -30,7 +36,7 @@ def test_connect_core_p0(monkeypatch):
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
-    assert _connect_core(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_1
+    assert _connect_core(_MOCK_DBNAME, _MOCK_CONFIG)[0].value == _MOCK_VALUE_1
 
 
 def test_connect_core_n0(monkeypatch):
@@ -41,7 +47,7 @@ def test_connect_core_n0(monkeypatch):
         def close(self): self.value = None
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
-    assert _connect_core(_MOCK_DBNAME, _MOCK_CONFIG) is None
+    assert _connect_core(_MOCK_DBNAME, _MOCK_CONFIG)[0] is None
 
 
 def test_db_reconnect_p0(monkeypatch):

@@ -7,7 +7,7 @@ from pypgtable.raw_table import raw_table
 from pypgtable.utils.base_logging import get_logger
 
 
-_logger = get_logger(__file__, __name__)
+_logger, _ = get_logger(__file__, __name__)
 
 
 _CONFIG = {

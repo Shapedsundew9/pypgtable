@@ -86,9 +86,9 @@ def db_disconnect(dbname, config):
 		try:
 			connection.close()
 		except (InterfaceError, OperationalError):
-			pass
+			pass 
 		finally:
-			_connections.setdefault(config['host'], {dbname: None})[dbname] = None 
+			_connections.setdefault(config['host'], {dbname: None})[dbname] = None
 
 
 def db_disconnect_all():
@@ -119,6 +119,7 @@ def db_reconnect(dbname, config):
 		'port' (int): Port to access database server on
 		'user' (str): Username to login with
 		'password' (str): Password to login with
+		'retries (int): Number of time to retry a failed connection.
 	}
 	
 	Returns
@@ -129,12 +130,15 @@ def db_reconnect(dbname, config):
 	if not connection is None: db_disconnect(dbname, config)
 	backoff_gen = backoff_generator(_INITIAL_DELAY, _BACKOFF_STEPS, _BACKOFF_FUZZ)
 	attempts = 0
-	while (connection := _connect_core(dbname, config)) is None:
+	connection, error = _connect_core(dbname, config)
+	while connection is None and attempts <= config['retries']:
 		backoff = next(backoff_gen)
 		attempts += 1
 		_logger.warning(text_token({'W04000':{'attempts': attempts, 'dbname': dbname,
 			'config':config, 'backoff': backoff}}))
 		sleep(backoff)
+		connection, error = _connect_core(dbname, config)
+	if connection is None: raise error
 	_connections.setdefault(config['host'], {})[dbname] = connection
 	return connection
 
@@ -163,15 +167,18 @@ def _connect_core(dbname, config):
 	port = config['port']
 	user = config['user']
 	password = config['password']
+	err = None
 	try:
 		connection = connect(host=host, port=port, user=user, password=password, dbname=dbname, connect_timeout=2)
 	except (InterfaceError, OperationalError) as e:
 		connection = None
 		_logger.warning(text_token({'W04001':{'dbname': dbname,
-			'config': config, 'error': e}}))
+			'config': config, 'error': (err := e)}}))
 	else:
+		err = None
 		_logger.info(text_token({'I04000':{'dbname': dbname, 'config': config}}))
-	return connection
+	finally:
+		return connection, err
 
 
 def db_exists(dbname, config):
