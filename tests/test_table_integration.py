@@ -23,15 +23,15 @@ _CONFIG = {
             'type': 'INTEGER',
             'primary_key': True
         },
-        'left' : {
+        'left': {
             'type': 'INTEGER',
             'null': True
         },
-        'right' : {
+        'right': {
             'type': 'INTEGER',
             'null': True
         },
-        'uid' : {
+        'uid': {
             'type': 'INTEGER',
             'index': 'btree',
             'unique': True,
@@ -40,7 +40,7 @@ _CONFIG = {
             'type': 'TIMESTAMP',
             'default': 'NOW()'
         },
-        'metadata' : {
+        'metadata': {
             'type': 'INTEGER',
             'array': True,
             'index': 'btree',
@@ -75,16 +75,17 @@ def test_create_table():
     """Validate a the SQL sequence when a table exists."""
     config = deepcopy(_CONFIG)
     t = table(config)
-    assert not t is None
+    assert t is not None
 
 
 def test_getitem_encoded_pk1():
     """Validate a valid getitem for an encoded primary key."""
     config = deepcopy(_CONFIG)
     t = _register_conversions(table(config))
-    expected = {"id": 1000, "left": 1, "right": 2, "uid": 100, "metadata": None, "name": "ROOT"}
+    expected = {"id": 1000, "left": 1, "right": 2,
+                "uid": 100, "metadata": None, "name": "ROOT"}
     result = t[1000]
-    assert all([expected[k] == result[k] for k in expected]) 
+    assert all([expected[k] == result[k] for k in expected])
 
 
 def test_getitem_encoded_pk2():
@@ -98,9 +99,10 @@ def test_getitem_pk1():
     """Validate a valid getitem."""
     config = deepcopy(_CONFIG)
     t = table(config)
-    expected = {"id": 0, "left": 1, "right": 2, "uid": 100, "metadata": None, "name": "root"}
+    expected = {"id": 0, "left": 1, "right": 2,
+                "uid": 100, "metadata": None, "name": "root"}
     result = t[0]
-    assert all([expected[k] == result[k] for k in expected]) 
+    assert all([expected[k] == result[k] for k in expected])
 
 
 def test_getitem_pk2():
@@ -116,7 +118,7 @@ def test_getitem_no_pk():
     config['schema']['id']['primary_key'] = False
     t = table(config)
     try:
-        result = t[0]
+        t[0]
     except ValueError as e:
         assert str(e) == "SELECT row on primary key but no primary key defined!"
     else:
@@ -127,41 +129,51 @@ def test_setitem_encoded_pk():
     """Validate a valid setitem for an encoded primary key."""
     config = deepcopy(_CONFIG)
     t = _register_conversions(table(config))
-    setitem = {"id": 22, "left": 9, "right": 12, "uid": 122, "metadata": [34, 78], "name": "rOoT"}
-    expected_decoded = {"id": 22, "left": 9, "right": 12, "uid": 122, "metadata": [34, 78], "name": "ROOT"}
-    expected_raw = {"id": -978, "left": 9, "right": 12, "uid": 122, "metadata": [34, 78], "name": "root"}
+    setitem = {"id": 22, "left": 9, "right": 12,
+               "uid": 122, "metadata": [34, 78], "name": "rOoT"}
+    expected_decoded = {"id": 22, "left": 9, "right": 12,
+                        "uid": 122, "metadata": [34, 78], "name": "ROOT"}
+    expected_raw = {"id": -978, "left": 9, "right": 12,
+                    "uid": 122, "metadata": [34, 78], "name": "root"}
     t[22] = setitem
     result = t[22]
-    raw_result = dict(zip(t.raw._columns, t.raw.select('WHERE {id} = -978')[0]))
-    assert all([expected_decoded[k] == result[k] for k in expected_decoded]) 
-    assert all([expected_raw[k] == raw_result[k] for k in expected_raw]) 
+    raw_result = dict(
+        zip(t.raw._columns, t.raw.select('WHERE {id} = -978')[0]))
+    assert all([expected_decoded[k] == result[k] for k in expected_decoded])
+    assert all([expected_raw[k] == raw_result[k] for k in expected_raw])
 
 
 def test_setitem_pk():
     """Validate a valid setitem."""
     config = deepcopy(_CONFIG)
     t = table(config)
-    setitem = {"id": 22, "left": 9, "right": 12, "uid": 122, "metadata": [34, 78], "name": "rOoT"}
-    expected_decoded = {"id": 22, "left": 9, "right": 12, "uid": 122, "metadata": [34, 78], "name": "rOoT"}
-    expected_raw = {"id": 22, "left": 9, "right": 12, "uid": 122, "metadata": [34, 78], "name": "rOoT"}
+    setitem = {"id": 22, "left": 9, "right": 12,
+               "uid": 122, "metadata": [34, 78], "name": "rOoT"}
+    expected_decoded = {"id": 22, "left": 9, "right": 12,
+                        "uid": 122, "metadata": [34, 78], "name": "rOoT"}
+    expected_raw = {"id": 22, "left": 9, "right": 12,
+                    "uid": 122, "metadata": [34, 78], "name": "rOoT"}
     t[22] = setitem
     result = t[22]
     raw_result = dict(zip(t.raw._columns, t.raw.select('WHERE {id} = 22')[0]))
-    assert all([expected_decoded[k] == result[k] for k in expected_decoded]) 
-    assert all([expected_raw[k] == raw_result[k] for k in expected_raw]) 
+    assert all([expected_decoded[k] == result[k] for k in expected_decoded])
+    assert all([expected_raw[k] == raw_result[k] for k in expected_raw])
 
 
 def test_setitem_mismatch_pk():
     """When setting an item and specifying the primary key in the value the setitem key takes precedence."""
     config = deepcopy(_CONFIG)
     t = table(config)
-    setitem = {"id": 22, "left": 9, "right": 12, "uid": 122, "metadata": [34, 78], "name": "rOoT"}
-    expected_decoded = {"id": 28, "left": 9, "right": 12, "uid": 122, "metadata": [34, 78], "name": "rOoT"}
-    expected_raw = {"id": 28, "left": 9, "right": 12, "uid": 122, "metadata": [34, 78], "name": "rOoT"}
+    setitem = {"id": 22, "left": 9, "right": 12,
+               "uid": 122, "metadata": [34, 78], "name": "rOoT"}
+    expected_decoded = {"id": 28, "left": 9, "right": 12,
+                        "uid": 122, "metadata": [34, 78], "name": "rOoT"}
+    expected_raw = {"id": 28, "left": 9, "right": 12,
+                    "uid": 122, "metadata": [34, 78], "name": "rOoT"}
     t[28] = setitem
     result = t[28]
     raw_result = dict(zip(t.raw._columns, t.raw.select('WHERE {id} = 28')[0]))
-    assert all([expected_decoded[k] == result[k] for k in expected_decoded]) 
+    assert all([expected_decoded[k] == result[k] for k in expected_decoded])
     assert all([expected_raw[k] == raw_result[k] for k in expected_raw])
     assert t[22] == {}
 
@@ -170,7 +182,8 @@ def test_select_dict():
     """Validate select returning a dict."""
     config = deepcopy(_CONFIG)
     t = table(config)
-    data = t.select('WHERE {id} = {seven}', {'seven': 7}, columns=('uid', 'left', 'right'))
+    data = t.select('WHERE {id} = {seven}', {'seven': 7},
+                    columns=('uid', 'left', 'right'))
     assert data == [{'uid': 107, 'left': 13, 'right': None}]
 
 
@@ -178,7 +191,8 @@ def test_select_list():
     """Validate select returning a list."""
     config = deepcopy(_CONFIG)
     t = table(config)
-    data = t.select('WHERE {id} = {seven}', {'seven': 7}, columns=('uid', 'left', 'right'), container='list')
+    data = t.select('WHERE {id} = {seven}', {'seven': 7}, columns=(
+        'uid', 'left', 'right'), container='list')
     assert data == [[107, 13, None]]
 
 
@@ -186,7 +200,8 @@ def test_select_tuple():
     """Validate select returning a list."""
     config = deepcopy(_CONFIG)
     t = table(config)
-    data = t.select('WHERE {id} = {seven}', {'seven': 7}, columns=('uid', 'left', 'right'), container='tuple')
+    data = t.select('WHERE {id} = {seven}', {'seven': 7}, columns=(
+        'uid', 'left', 'right'), container='tuple')
     assert data == [(107, 13, None)]
 
 
@@ -194,9 +209,10 @@ def test_recursive_select():
     """Validate a recursive select returning a tuple."""
     config = deepcopy(_CONFIG)
     t = table(config)
-    data = t.recursive_select('WHERE {id} = 2', columns=('id', 'uid', 'left', 'right'), container='tuple')
+    data = t.recursive_select('WHERE {id} = 2', columns=(
+        'id', 'uid', 'left', 'right'), container='tuple')
     assert data == [(2, 102, 5, 6), (5, 105, 10, 11), (6, 106, None, 12),
-        (10, 110, None, None), (11, 111, None, None), (12, 112, None, None)]
+                    (10, 110, None, None), (11, 111, None, None), (12, 112, None, None)]
 
 
 def test_upsert():
@@ -205,11 +221,14 @@ def test_upsert():
     config = deepcopy(_CONFIG)
     t = table(config)
     data = (
-        {'id': 91, 'left': 3, 'right': 4, 'uid': 901, 'metadata': [1, 2], 'name': 'Harry'},
+        {'id': 91, 'left': 3, 'right': 4, 'uid': 901,
+            'metadata': [1, 2], 'name': 'Harry'},
         {'id': 0, 'left': 1, 'right': 2, 'uid': 201, 'metadata': [], 'name': 'Diana'}
     )
-    returning = t.upsert(data, '{name}={EXCLUDED.name} || {temp}', {'temp': '_temp'}, ('uid', 'id', 'name'), container='tuple')
-    row = t.select('WHERE {id} = 0', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'), container='tuple')
+    returning = t.upsert(data, '{name}={EXCLUDED.name} || {temp}', {
+                         'temp': '_temp'}, ('uid', 'id', 'name'), container='tuple')
+    row = t.select('WHERE {id} = 0', columns=(
+        'id', 'left', 'right', 'uid', 'metadata', 'name'), container='tuple')
     assert returning == [(901, 91, 'Harry'), (100, 0, 'Diana_temp')]
     assert row == [(0, 1, 2, 100, None, "Diana_temp")]
 
@@ -220,8 +239,10 @@ def test_insert():
     t = table(config)
     columns = ("id", "left", "right", "uid", "metadata", "name")
     data = [
-        {'id': 91, 'left': 3, 'right': 4, 'uid': 901, 'metadata': [1, 2], 'name': 'Harry'},
-        {'id': 92, 'left': 5, 'right': 6, 'uid': 902, 'metadata': [], 'name': 'William'}
+        {'id': 91, 'left': 3, 'right': 4, 'uid': 901,
+            'metadata': [1, 2], 'name': 'Harry'},
+        {'id': 92, 'left': 5, 'right': 6, 'uid': 902,
+            'metadata': [], 'name': 'William'}
     ]
     t.insert(data)
     results = t.select('WHERE {id} > 90 ORDER BY {id} ASC', columns=columns)
@@ -232,8 +253,10 @@ def test_update():
     """Validate an update returning a dict."""
     config = deepcopy(_CONFIG)
     t = table(config)
-    returning = t.update('{name}={name} || {new}', '{id}={qid}', {'qid':0, 'new': '_new'}, ('id', 'name'))
-    row = t.select('WHERE {id} = 0', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'), container='tuple')
+    returning = t.update('{name}={name} || {new}', '{id}={qid}', {
+                         'qid': 0, 'new': '_new'}, ('id', 'name'))
+    row = t.select('WHERE {id} = 0', columns=(
+        'id', 'left', 'right', 'uid', 'metadata', 'name'), container='tuple')
     assert returning == [{'id': 0, 'name': 'root_new'}]
     assert row == [(0, 1, 2, 100, None, "root_new")]
 
@@ -242,8 +265,10 @@ def test_delete():
     """Validate a delete returning a list."""
     config = deepcopy(_CONFIG)
     t = table(config)
-    returning = t.delete('{id}={target}', {'target': 7}, ('uid', 'id'), container='list')
-    row = t.select('WHERE {id} = 7', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
+    returning = t.delete('{id}={target}', {'target': 7},
+                         ('uid', 'id'), container='list')
+    row = t.select('WHERE {id} = 7', columns=(
+        'id', 'left', 'right', 'uid', 'metadata', 'name'))
     assert returning == [[107, 7]]
     assert row == []
 
@@ -253,8 +278,10 @@ def test_validate():
     config = deepcopy(_CONFIG)
     t = table(config)
     data = [
-        {'id': 91, 'left': 3, 'right': 4, 'uid': 901, 'metadata': [1, 2], 'name': 'Harry'},
-        {'id': 92, 'left': 5, 'right': 6, 'uid': 902, 'metadata': [], 'name': 'William'}
+        {'id': 91, 'left': 3, 'right': 4, 'uid': 901,
+            'metadata': [1, 2], 'name': 'Harry'},
+        {'id': 92, 'left': 5, 'right': 6, 'uid': 902,
+            'metadata': [], 'name': 'William'}
     ]
     results = t.validate(data)
     assert len(results) == len(data)

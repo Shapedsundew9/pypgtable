@@ -1,4 +1,4 @@
-"""Common routines for Erasmus GP"""
+"""Common routines."""
 
 from datetime import datetime
 from random import choice, getrandbits

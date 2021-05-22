@@ -3,10 +3,9 @@
 from psycopg2 import sql, OperationalError
 from psycopg2.extensions import ISOLATION_LEVEL_DEFAULT, ISOLATION_LEVEL_REPEATABLE_READ
 from pypgtable import database
-from pypgtable.utils.base_logging import get_logger
 from pypgtable.utils.reference import sequential_reference
 from pypgtable.database import _connect_core, db_reconnect, db_connect, db_disconnect, db_transaction
-from pypgtable.database import  db_disconnect_all, _DB_TRANSACTION_ATTEMPTS, db_exists, db_create, db_delete
+from pypgtable.database import db_disconnect_all, _DB_TRANSACTION_ATTEMPTS, db_exists, db_create, db_delete
 from pypgtable.common import backoff_generator
 from pypgtable.utils.base_logging import get_logger
 
@@ -31,9 +30,11 @@ _INFINITE_BACKOFFS = 100
 def test_connect_core_p0(monkeypatch):
     """Positive path for _connection_core()."""
     db_disconnect_all()
+
     class mock_connection():
         def __init__(self) -> None: self.value = _MOCK_VALUE_1
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
     assert _connect_core(_MOCK_DBNAME, _MOCK_CONFIG)[0].value == _MOCK_VALUE_1
@@ -42,9 +43,11 @@ def test_connect_core_p0(monkeypatch):
 def test_connect_core_n0(monkeypatch):
     """Raise an OperationalError in _connection_core()."""
     db_disconnect_all()
+
     class mock_connection():
         def __init__(self) -> None: raise OperationalError
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
     assert _connect_core(_MOCK_DBNAME, _MOCK_CONFIG)[0] is None
@@ -53,9 +56,11 @@ def test_connect_core_n0(monkeypatch):
 def test_db_reconnect_p0(monkeypatch):
     """Reconnect to the DB with no initial connection."""
     db_disconnect_all()
+
     class mock_connection():
         def __init__(self) -> None: self.value = _MOCK_VALUE_1
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
     assert db_reconnect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_1
@@ -64,13 +69,16 @@ def test_db_reconnect_p0(monkeypatch):
 def test_db_reconnect_p1(monkeypatch):
     """Reconnect to the DB with a pre-existing connection."""
     db_disconnect_all()
+
     def mock_values_iter():
         yield _MOCK_VALUE_1
         yield _MOCK_VALUE_2
     mock_values = mock_values_iter()
+
     class mock_connection():
         def __init__(self) -> None: self.value = next(mock_values)
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
     monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: mock_connection()})
@@ -80,13 +88,16 @@ def test_db_reconnect_p1(monkeypatch):
 def test_db_reconnect_n0(monkeypatch):
     """Pre-existing connection close() raises an OperationalError."""
     db_disconnect_all()
+
     def mock_values_iter():
         yield _MOCK_VALUE_1
         yield _MOCK_VALUE_2
     mock_values = mock_values_iter()
+
     class mock_connection():
         def __init__(self) -> None: self.value = next(mock_values)
         def close(self): raise OperationalError
+
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
     monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: mock_connection()})
@@ -95,7 +106,7 @@ def test_db_reconnect_n0(monkeypatch):
 
 def test_db_reconnect_n1(monkeypatch):
     """Connection raises OperationalError.
-    
+
     There is a pre-existing connection.
     The pre-existing connection is successfully closed.
     The 1st reconnection attempt raises an OperationalError.
@@ -105,20 +116,27 @@ def test_db_reconnect_n1(monkeypatch):
     one backoff.
     """
     db_disconnect_all()
+
     def _connection_iter():
-        for i in (_MOCK_VALUE_1, _MOCK_ERROR, _MOCK_VALUE_2): yield i
+        for i in (_MOCK_VALUE_1, _MOCK_ERROR, _MOCK_VALUE_2):
+            yield i
     mock_values = _connection_iter()
     global sleep_duration
     sleep_duration = 0.0
+
     class mock_connection():
         def __init__(self) -> None:
             self.value = next(mock_values)
-            if self.value == _MOCK_ERROR: raise OperationalError
+            if self.value == _MOCK_ERROR:
+                raise OperationalError
+
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
+
     def mock_sleep(backoff):
         global sleep_duration
-        sleep_duration += backoff 
+        sleep_duration += backoff
     monkeypatch.setattr(database, 'connect', mock_connect)
     monkeypatch.setattr(database, 'sleep', mock_sleep)
     backoff = next(backoff_generator(fuzz=False))
@@ -129,7 +147,7 @@ def test_db_reconnect_n1(monkeypatch):
 
 def test_db_reconnect_n2(monkeypatch):
     """Check infinite backoff.
-    
+
     There is a pre-existing connection.
     The pre-existing connection is successfully closed.
     The _INFINITE_BACKOFFS reconnection attempts raises an OperationalError.
@@ -139,38 +157,47 @@ def test_db_reconnect_n2(monkeypatch):
     _INFINITE_BACKOFFS backoffs.
     """
     db_disconnect_all()
+
     def _connection_iter():
         connections = [_MOCK_VALUE_1]
         connections.extend([_MOCK_ERROR] * _INFINITE_BACKOFFS)
         connections.append(_MOCK_VALUE_2)
-        for i in connections: yield i
+        for i in connections:
+            yield i
     mock_values = _connection_iter()
     global sleep_duration
     sleep_duration = 0.0
+
     class mock_connection():
         def __init__(self) -> None:
             self.value = next(mock_values)
-            if self.value == _MOCK_ERROR: raise OperationalError
+            if self.value == _MOCK_ERROR:
+                raise OperationalError
+
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
+
     def mock_sleep(backoff):
         global sleep_duration
-        sleep_duration += backoff 
+        sleep_duration += backoff
     monkeypatch.setattr(database, 'connect', mock_connect)
     monkeypatch.setattr(database, 'sleep', mock_sleep)
     monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: mock_connection()})
     backoff_gen = backoff_generator(fuzz=False)
     total_backoff = sum((next(backoff_gen) for _ in range(_INFINITE_BACKOFFS)))
     assert db_reconnect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_2
-    assert total_backoff >= sleep_duration/1.1 and total_backoff <= sleep_duration/0.9
+    assert total_backoff >= sleep_duration / 1.1 and total_backoff <= sleep_duration / 0.9
 
 
 def test_db_connect_p0(monkeypatch):
     """No pre-existing connection test for db_connect()."""
     db_disconnect_all()
+
     class mock_connection():
         def __init__(self) -> None: self.value = _MOCK_VALUE_1
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
     assert db_connect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_1
@@ -179,13 +206,16 @@ def test_db_connect_p0(monkeypatch):
 def test_db_connect_p1(monkeypatch):
     """With pre-existing connection test for db_connect()."""
     db_disconnect_all()
+
     def mock_values_iter():
         yield _MOCK_VALUE_1
         yield _MOCK_VALUE_2
     mock_values = mock_values_iter()
+
     class mock_connection():
         def __init__(self) -> None: self.value = next(mock_values)
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
     assert db_connect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_1
@@ -194,18 +224,21 @@ def test_db_connect_p1(monkeypatch):
 
 def test_db_disconnect_p0(monkeypatch):
     """Create a connection and then disconnect it.
-    
+
     Connection should be closed.
     A new connection should be a new connection object.
     """
     db_disconnect_all()
+
     def mock_values_iter():
         yield _MOCK_VALUE_1
         yield _MOCK_VALUE_2
     mock_values = mock_values_iter()
+
     class mock_connection():
         def __init__(self) -> None: self.value = next(mock_values)
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
     connection = db_connect(_MOCK_DBNAME, _MOCK_CONFIG)
@@ -217,17 +250,20 @@ def test_db_disconnect_p0(monkeypatch):
 
 def test_db_disconnect_n0(monkeypatch):
     """Create a connection and then disconnect it with an OperationalError on close().
-    
+
     A new connection should be a new connection object.
     """
     db_disconnect_all()
+
     def mock_values_iter():
         yield _MOCK_VALUE_1
         yield _MOCK_VALUE_2
     mock_values = mock_values_iter()
+
     class mock_connection():
         def __init__(self) -> None: self.value = next(mock_values)
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
     assert db_connect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_1
@@ -237,20 +273,23 @@ def test_db_disconnect_n0(monkeypatch):
 
 def test_db_transaction_p0(monkeypatch):
     """Execute a read-only SQL statement.
-    
+
     A single cursor should be returned.
     """
     db_disconnect_all()
     mock_connection_ref = sequential_reference()
     mock_cursor_ref = sequential_reference()
+
     class mock_cursor():
         def __init__(self) -> None: self.value = next(mock_cursor_ref)
         def execute(self, sql_str): pass
         def fetchone(self): return self.value
+
     class mock_connection():
         def __init__(self) -> None: self.value = next(mock_connection_ref)
         def cursor(self): return mock_cursor()
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
     dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", ))
@@ -260,21 +299,24 @@ def test_db_transaction_p0(monkeypatch):
 
 def test_db_transaction_p1(monkeypatch):
     """Execute multiple read-only SQL statements.
-    
+
     A cursor for each SQL statement should be returned in the order
     the statement were submitted.
     """
     db_disconnect_all()
     mock_connection_ref = sequential_reference()
     mock_cursor_ref = sequential_reference()
+
     class mock_cursor():
         def __init__(self) -> None: self.value = next(mock_cursor_ref)
         def execute(self, sql_str): pass
         def fetchone(self): return self.value
+
     class mock_connection():
         def __init__(self) -> None: self.value = next(mock_connection_ref)
         def cursor(self): return mock_cursor()
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
     dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"))
@@ -289,19 +331,26 @@ def test_db_transaction_p2(monkeypatch):
     db_disconnect_all()
     mock_connection_ref = sequential_reference()
     mock_cursor_ref = sequential_reference()
+
     class mock_cursor():
         def __init__(self) -> None: self.value = next(mock_cursor_ref)
         def execute(self, sql_str): pass
         def fetchone(self): return self.value
+
     class mock_connection():
         def __init__(self) -> None:
             self.value = next(mock_connection_ref)
             self.isolation_level = ISOLATION_LEVEL_DEFAULT
+
         def close(self): self.value = None
+
         def cursor(self):
             assert self.isolation_level == ISOLATION_LEVEL_REPEATABLE_READ
             return mock_cursor()
-        def set_session(self, isolation_level): self.isolation_level = isolation_level
+
+        def set_session(
+            self, isolation_level): self.isolation_level = isolation_level
+
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
     dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"), repeatable=True)
@@ -317,22 +366,29 @@ def test_db_transaction_p3(monkeypatch):
     db_disconnect_all()
     mock_connection_ref = sequential_reference()
     mock_cursor_ref = sequential_reference()
+
     class mock_cursor():
         def __init__(self) -> None: self.value = next(mock_cursor_ref)
         def execute(self, sql_str): pass
         def fetchone(self): return self.value
+
     class mock_connection():
         def __init__(self) -> None:
             self.value = next(mock_connection_ref)
             self.committed = False
+
         def close(self): self.value = None
+
         def cursor(self):
             self.committed = False
             return mock_cursor()
+
         def commit(self): self.committed = True
+
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
-    dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"), read=False)
+    dbcur_list = db_transaction(
+        _MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"), read=False)
     assert len(dbcur_list) == 3
     assert dbcur_list[0].fetchone() == 0
     assert dbcur_list[1].fetchone() == 1
@@ -357,15 +413,21 @@ def test_db_transaction_n0(monkeypatch):
     db_disconnect_all()
     mock_connection_ref = sequential_reference()
     mock_cursor_ref = sequential_reference()
+
     class mock_cursor():
         def __init__(self) -> None: self.value = next(mock_cursor_ref)
+
         def execute(self, sql_str):
-            if self.value == 1: raise OperationalError
+            if self.value == 1:
+                raise OperationalError
+
         def fetchone(self): return self.value
+
     class mock_connection():
         def __init__(self) -> None: self.value = next(mock_connection_ref)
         def cursor(self): return mock_cursor()
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
     dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"))
@@ -393,15 +455,21 @@ def test_db_transaction_n1(monkeypatch):
     db_disconnect_all()
     mock_connection_ref = sequential_reference()
     mock_cursor_ref = sequential_reference()
+
     class mock_cursor():
         def __init__(self) -> None: self.value = next(mock_cursor_ref)
+
         def execute(self, sql_str):
-            if self.value < _DB_TRANSACTION_ATTEMPTS: raise OperationalError
+            if self.value < _DB_TRANSACTION_ATTEMPTS:
+                raise OperationalError
+
         def fetchone(self): return self.value
+
     class mock_connection():
         def __init__(self) -> None: self.value = next(mock_connection_ref)
         def cursor(self): return mock_cursor()
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
     dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"))
@@ -417,21 +485,28 @@ def test_db_transaction_n2(monkeypatch):
     db_disconnect_all()
     mock_connection_ref = sequential_reference()
     mock_cursor_ref = sequential_reference()
+
     class mock_cursor():
         def __init__(self) -> None: self.value = next(mock_cursor_ref)
+
         def execute(self, sql_str):
-            if self.value == 1: raise OperationalError
+            if self.value == 1:
+                raise OperationalError
+
         def fetchone(self): return self.value
+
     class mock_connection():
         def __init__(self) -> None:
             self.value = next(mock_connection_ref)
             self.isolation_level = ISOLATION_LEVEL_DEFAULT
             self.committed = False
             self.rolledback = False
+
         def close(self): self.value = None
         def cursor(self): return mock_cursor()
         def commit(self): self.committed = True
         def rollback(self): self.rolledback = True
+
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
     dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"), read=False)
@@ -448,14 +523,17 @@ def test_db_exists_p0(monkeypatch):
     db_disconnect_all()
     mock_connection_ref = sequential_reference()
     mock_cursor_ref = sequential_reference()
+
     class mock_cursor():
         def __init__(self) -> None: self.value = next(mock_cursor_ref)
         def execute(self, sql_str): pass
         def fetchall(self): return ((_MOCK_DBNAME,),)
+
     class mock_connection():
         def __init__(self) -> None: self.value = next(mock_connection_ref)
         def cursor(self): return mock_cursor()
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
     def mock_as_string(*args, **kwargs): return "SQL string"
     monkeypatch.setattr(database, 'connect', mock_connect)
@@ -468,14 +546,17 @@ def test_db_exists_p1(monkeypatch):
     db_disconnect_all()
     mock_connection_ref = sequential_reference()
     mock_cursor_ref = sequential_reference()
+
     class mock_cursor():
         def __init__(self) -> None: self.value = next(mock_cursor_ref)
         def execute(self, sql_str): pass
         def fetchall(self): return ((_MOCK_DBNAME,),)
+
     class mock_connection():
         def __init__(self) -> None: self.value = next(mock_connection_ref)
         def cursor(self): return mock_cursor()
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
     def mock_as_string(*args, **kwargs): return "SQL string"
     monkeypatch.setattr(database, 'connect', mock_connect)
@@ -488,16 +569,20 @@ def test_db_create_p0(monkeypatch):
     db_disconnect_all()
     mock_connection_ref = sequential_reference()
     mock_cursor_ref = sequential_reference()
+
     class mock_cursor():
         def __init__(self) -> None: self.value = next(mock_cursor_ref)
         def execute(self, sql_str): pass
+
     class mock_connection():
         def __init__(self) -> None:
             self.value = next(mock_connection_ref)
             self.autocommit = False
+
         def cursor(self): return mock_cursor()
         def commit(self): pass
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
     def mock_as_string(*args, **kwargs): return "SQL string"
     monkeypatch.setattr(database, 'connect', mock_connect)
@@ -510,19 +595,22 @@ def test_db_delete_p0(monkeypatch):
     db_disconnect_all()
     mock_connection_ref = sequential_reference()
     mock_cursor_ref = sequential_reference()
+
     class mock_cursor():
         def __init__(self) -> None: self.value = next(mock_cursor_ref)
         def execute(self, sql_str): pass
+
     class mock_connection():
         def __init__(self) -> None:
             self.value = next(mock_connection_ref)
             self.autocommit = False
+
         def cursor(self): return mock_cursor()
         def commit(self): pass
         def close(self): self.value = None
+
     def mock_connect(*args, **kwargs): return mock_connection()
     def mock_as_string(*args, **kwargs): return "SQL string"
     monkeypatch.setattr(database, 'connect', mock_connect)
     monkeypatch.setattr(sql.Composed, 'as_string', mock_as_string)
     db_delete(_MOCK_DBNAME, _MOCK_CONFIG)
-

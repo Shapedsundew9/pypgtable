@@ -1,7 +1,7 @@
 """Logging configuration for all tests."""
 
 
-from logging import basicConfig, DEBUG, INFO, getLogger
+from logging import basicConfig, DEBUG, getLogger
 from os.path import join, dirname, basename, splitext, exists, isfile, islink, isdir
 from os import makedirs, listdir, unlink
 from shutil import rmtree
@@ -9,10 +9,9 @@ from shutil import rmtree
 
 def get_logger(file, name):
     """Create a logger for unit test 'name'.
-    
+
     If the logging folder does not exist it will be created.
     If the logging folder exists all files & folders within will be deleted.
-    
     """
     location = join(dirname(file), 'logs', name)
     if not exists(location):

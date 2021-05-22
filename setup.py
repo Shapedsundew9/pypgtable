@@ -73,7 +73,7 @@ setup(
 
     # This should be a valid email address corresponding to the author listed
     # above.
-    #author_email='author@example.com',  # Optional
+    # author_email='author@example.com',  # Optional
 
     # Classifiers help users find your project by categorizing it.
     #
@@ -111,7 +111,7 @@ setup(
 
     # When your source code is in a subdirectory under the project root, e.g.
     # `src/`, it is necessary to specify the `package_dir` argument.
-    #package_dir={'': 'src'},  # Optional
+    # package_dir={'': 'src'},  # Optional
 
     # You can just specify package directories manually here if your project is
     # simple. Or you can use find_packages().
@@ -161,7 +161,7 @@ setup(
     # http://docs.python.org/distutils/setupscript.html#installing-additional-files
     #
     # In this case, 'data_file' will be installed into '<sys.prefix>/my_data'
-    #data_files=[('my_data', ['data/data_file'])],  # Optional
+    # data_files=[('my_data', ['data/data_file'])],  # Optional
 
     # To provide executable scripts, use entry points in preference to the
     # "scripts" keyword. Entry points provide cross-platform support and allow
@@ -170,11 +170,11 @@ setup(
     #
     # For example, the following would provide a command called `sample` which
     # executes the function `main` from this package when invoked:
-    #entry_points={  # Optional
+    # entry_points={  # Optional
     #    'console_scripts': [
     #        'sample=sample:main',
     #    ],
-    #},
+    # },
 
     # List additional URLs that are relevant to your project as a dict.
     #

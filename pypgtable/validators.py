@@ -16,7 +16,6 @@ with open(join(dirname(__file__), "formats/raw_table_column_config_format.json")
 
 class _raw_table_config_validator(BaseValidator):
 
-
     def sub_normalized(self, document):
         """Normalize sub-documents."""
         document = deepcopy(document)
@@ -25,20 +24,21 @@ class _raw_table_config_validator(BaseValidator):
             document['schema'][column] = raw_table_column_config_validator.normalized(document['schema'][column])
         return self.normalized(document)
 
-
     def _check_with_valid_database_config(self, field, value):
         """Validate database configuration."""
         if not database_config_validator.validate(value):
-            for e in database_config_validator._errors: self._error(field, self.str_errors(e))
-
+            for e in database_config_validator._errors:
+                self._error(field, self.str_errors(e))
 
     def _check_with_valid_raw_table_column_config(self, field, value):
         """Validate every column configuration."""
         if not raw_table_column_config_validator.validate(value):
-            for e in raw_table_column_config_validator._errors: self._error(field, self.str_errors(e))
-        if value.get('null', False) and value.get('primary_key', False): self._error(field, 'A column cannot be both NULL and the PRIMARY KEY.')
-        if value.get('unique', False) and value.get('primary_key', False): self._error(field, 'A column cannot be both UNIQUE and the PRIMARY KEY.')
-
+            for e in raw_table_column_config_validator._errors:
+                self._error(field, self.str_errors(e))
+        if value.get('null', False) and value.get('primary_key', False):
+            self._error(field, 'A column cannot be both NULL and the PRIMARY KEY.')
+        if value.get('unique', False) and value.get('primary_key', False):
+            self._error(field, 'A column cannot be both UNIQUE and the PRIMARY KEY.')
 
     def _check_with_valid_schema_config(self, field, value):
         """Validate the overall schema. There can be only one primary key."""
@@ -46,20 +46,20 @@ class _raw_table_config_validator(BaseValidator):
         if primary_key_count > 1:
             self._error(field, "There are {} primary keys defined. There can only be 0 or 1.", primary_key_count)
 
-
     def _check_with_valid_ptr_map_config(self, field, value):
         """Validate pointer map configurtation."""
         for k, v in value.items():
-            if v == k: self._error(field, "Circular reference {} -> {}".format(k, v))
-            if k not in self.document['schema'].keys(): self._error(field, "Key {} is not a field.".format(k))
-            if v not in self.document['schema'].keys(): self._error(field, "Value {} is not a field.".format(v))
-
+            if v == k:
+                self._error(field, "Circular reference {} -> {}".format(k, v))
+            if k not in self.document['schema'].keys():
+                self._error(field, "Key {} is not a field.".format(k))
+            if v not in self.document['schema'].keys():
+                self._error(field, "Value {} is not a field.".format(v))
 
     def _check_with_valid_file_folder(self, field, value):
         """Validate data file & format file folders exist if validate is set."""
         if self.document.get('validate', False):
             self._isdir(field, value)
-
 
     def _check_with_valid_format_file(self, field, value):
         """Validate the format file schema if validate is set."""
@@ -68,10 +68,9 @@ class _raw_table_config_validator(BaseValidator):
             schema = self._isjsonfile(field, abspath)
             if schema:
                 try:
-                    v = Validator(schema)
-                except SchemaError as e:
+                    Validator(schema)
+                except SchemaError:
                     self._error(field, "Format file has an invalid schema.")
-
 
     def _check_with_valid_data_files(self, field, value):
         """Validate the data files if validate is set."""
@@ -84,14 +83,13 @@ class _raw_table_config_validator(BaseValidator):
                 abspath = join(self.document['data_file_folder'], filename)
                 for datum in self._isjsonfile(field, abspath):
                     if not validator.validate(datum):
-                        for e in validator._errors: self._error(field, self.str_errors(e))
-
+                        for e in validator._errors:
+                            self._error(field, self.str_errors(e))
 
     def _check_with_valid_delete_db(self, field, value):
         """Validate delete_db."""
         if value and not self.document.get('create_db', False):
             self._error(field, "delete_db == True requires create_db == True")
-
 
     def _check_with_valid_delete_table(self, field, value):
         """Validate delete_table."""

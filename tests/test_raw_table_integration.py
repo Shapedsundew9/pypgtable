@@ -24,15 +24,15 @@ _CONFIG = {
             'type': 'INTEGER',
             'primary_key': True
         },
-        'left' : {
+        'left': {
             'type': 'INTEGER',
             'null': True
         },
-        'right' : {
+        'right': {
             'type': 'INTEGER',
             'null': True
         },
-        'uid' : {
+        'uid': {
             'type': 'INTEGER',
             'index': 'btree',
             'unique': True,
@@ -41,7 +41,7 @@ _CONFIG = {
             'type': 'TIMESTAMP',
             'default': 'NOW()'
         },
-        'metadata' : {
+        'metadata': {
             'type': 'INTEGER',
             'array': True,
             'index': 'btree',
@@ -70,7 +70,7 @@ def test_create_table():
     """Validate a the SQL sequence when a table exists."""
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    assert not rt is None
+    assert rt is not None
 
 
 def test_select():
@@ -87,7 +87,7 @@ def test_recursive_select():
     rt = raw_table(config)
     data = rt.recursive_select('WHERE {id} = 2', columns=('id', 'uid', 'left', 'right'))
     assert data == [(2, 102, 5, 6), (5, 105, 10, 11), (6, 106, None, 12),
-        (10, 110, None, None), (11, 111, None, None), (12, 112, None, None)]
+                    (10, 110, None, None), (11, 111, None, None), (12, 112, None, None)]
 
 
 def test_insert():
@@ -110,14 +110,14 @@ def test_upsert():
     returning = rt.upsert(columns, values, '{name}={EXCLUDED.name} || {temp}', {'temp': '_temp'}, ('uid', 'id', 'name'))
     row = rt.select('WHERE {id} = 0', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
     assert returning == [(901, 91, 'Harry'), (100, 0, 'Diana_temp')]
-    assert  row == [(0, 1, 2, 100, None, "Diana_temp")]
+    assert row == [(0, 1, 2, 100, None, "Diana_temp")]
 
 
 def test_update():
     """As it says on the tin."""
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    returning = rt.update('{name}={name} || {new}', '{id}={qid}', {'qid':0, 'new': '_new'}, ('id', 'name'))
+    returning = rt.update('{name}={name} || {new}', '{id}={qid}', {'qid': 0, 'new': '_new'}, ('id', 'name'))
     row = rt.select('WHERE {id} = 0', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
     assert returning == [(0, 'root_new')]
     assert row == [(0, 1, 2, 100, None, "root_new")]
