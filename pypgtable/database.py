@@ -9,6 +9,7 @@ of a single threaded process.
 # See https://bbengfort.github.io/2017/12/psycopg2-transactions/
 
 
+from copy import deepcopy
 from logging import getLogger
 from time import sleep
 from psycopg2 import sql, connect, InterfaceError, OperationalError, ProgrammingError, errors
@@ -23,34 +24,34 @@ _logger = getLogger('pypgtable')
 
 register_token_code(
     'W04000',
-	'Backing off connection re-attempt {attempts} for database {dbname} with config {config} for {backoff} seconds.')
+    'Backing off connection re-attempt {attempts} for database {dbname} with config {config} for {backoff} seconds.')
 register_token_code(
     'W04001',
-	'Unable to connect to database {dbname} with config {config}. Error: {error}.')
+    'Unable to connect to database {dbname} with config {config}. Error: {error}.')
 register_token_code(
     'W04002',
-	'Transaction attempt {attempt} of {total}: Unable to {rw} database {dbname} with error code: {code} error: {error}.')
+    'Transaction attempt {attempt} of {total}: Unable to {rw} database {dbname} with error code: {code} error: {error}.')
 register_token_code(
     'W04003',
-	'{attempts} transactions failed. Dropping database {dbname} connection and re-establishing. {reconnection} of {total}.')
+    '{attempts} transactions failed. Dropping database {dbname} connection and re-establishing. {reconnection} of {total}.')
 register_token_code(
     'W04004',
-	'Insufficient privileges for user {user} to read maintenance DB {mdb}. Assuming {db} exists.')
+    'Insufficient privileges for user {user} to read maintenance DB {mdb}. Assuming {db} exists.')
 register_token_code(
     'E04000',
-	'Transaction cannot complete to database {dbname}. See previous log lines for details.')
+    'Transaction cannot complete to database {dbname}. See previous log lines for details.')
 register_token_code(
     'I04000',
-	'Connected to postgresql database {dbname} with config {config}.')
+    'Connected to postgresql database {dbname} with config {config}.')
 register_token_code(
     'I04001',
-	'Database {dbname} with config {config} {exists} exist.')
+    'Database {dbname} with config {config} {exists} exist.')
 register_token_code(
     'I04002',
-	'Database {dbname} with config {config} created.')
+    'Database {dbname} with config {config} created.')
 register_token_code(
     'I04003',
-	'Database {dbname} with config {config} deleted.')
+    'Database {dbname} with config {config} deleted.')
 
 
 _INITIAL_DELAY = 0.125
@@ -338,9 +339,13 @@ def db_transaction(dbname, config, sql_str_iter, read=True, repeatable=False):
     -------
     list(psycopg2.cursor)
     """
+    token2 = {'rw': ('write', 'read')[read], 'dbname': dbname, 'total': _DB_TRANSACTION_ATTEMPTS}
+    token3 = deepcopy(token2)
+    token3['attempts'] = _DB_TRANSACTION_ATTEMPTS
     backoff_gen = backoff_generator(_INITIAL_DELAY, _BACKOFF_STEPS, _BACKOFF_FUZZ)
     for reconnection in range(1, _DB_RECONNECTIONS + 1):
         for transaction_attempt in range(1, _DB_TRANSACTION_ATTEMPTS + 1):
+            token2['attempt'] = transaction_attempt
             connection = db_connect(dbname, config)
             if read and repeatable:
                 connection.set_session(isolation_level=ISOLATION_LEVEL_REPEATABLE_READ)
@@ -352,9 +357,9 @@ def db_transaction(dbname, config, sql_str_iter, read=True, repeatable=False):
                 except (InterfaceError, OperationalError) as e:
                     if not read:
                         connection.rollback()
-                    _logger.warning(text_token({'W04002': {'attempt': transaction_attempt, 'total': _DB_TRANSACTION_ATTEMPTS,
-                                                           'rw': ('write', 'read')[read], 'dbname': dbname, 'code': e.pgcode,
-														   'error': e}}))
+                    token2['code'] = e.pgcode
+                    token2['error'] = e
+                    _logger.warning(text_token({'W04002': token2}))
                     sleep(next(backoff_gen))
                     dbcur_list.clear()
                     if read and repeatable:
@@ -366,9 +371,8 @@ def db_transaction(dbname, config, sql_str_iter, read=True, repeatable=False):
                 if read and repeatable:
                     connection.set_session(isolation_level=ISOLATION_LEVEL_DEFAULT)
                 return dbcur_list
-        _logger.warning(text_token({'W04003': {'attempts': _DB_TRANSACTION_ATTEMPTS, 'total': _DB_TRANSACTION_ATTEMPTS,
-                                               'rw': ('write', 'read')[read], 'dbname': dbname,
-											   'reconnection': reconnection}}))
+        token3['reconnection'] = reconnection
+        _logger.warning(text_token({'W04003': token3}))
         db_reconnect(dbname, config)
     _logger.error(text_token({'E04000': {'dbname': dbname}}))
     raise e  # noqa: F821
