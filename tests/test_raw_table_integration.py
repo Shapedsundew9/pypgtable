@@ -12,7 +12,8 @@ _logger, _ = get_logger(__file__, __name__)
 
 _CONFIG = {
     'database': {
-        'dbname': 'test_db'
+        'dbname': 'test_db',
+        'host': 'postgres'
     },
     'table': 'test_table',
     'schema': {
