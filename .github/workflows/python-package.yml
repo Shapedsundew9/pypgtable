@@ -20,7 +20,7 @@ jobs:
         python-version: [3.8, 3.9]
     services:
       postgres:
-        image: postgres
+        image: postgres:12
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -28,7 +28,9 @@ jobs:
           --health-retries 5
         env:
           # Required by the image
+          POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
         ports:
           # Maps tcp port 5432 on service container to the host
           - 5432:5432
