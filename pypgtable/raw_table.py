@@ -72,10 +72,10 @@ class raw_table():
         self._pm, self._pm_columns, self._pm_sql = self._ptr_map_def()
         self._primary_key = self._get_primary_key()
         if self.config['delete_db']: self.delete_db()
-        if not self.config['delete_db'] and self.config['delete_table']: self.delete_table() 
         if not (dbexists := self._db_exists()) and not self.config['create_db'] and not self.config['wait_for_db']:
             raise RuntimeError("DB does not exist, create_db is False and wait_for_db is False.")
         if not dbexists and self.config['create_db']: self._create_db()
+        if self.config['delete_table']: self.delete_table() 
         if not (tableexists := self._table_exists()) and not self.config['create_table'] and not self.config['wait_for_table']:
             raise RuntimeError("Table does not exist, create_table is False and wait_for_table is False.")
         self._columns = self._create_table() if not tableexists and self.config['create_table'] else self._table_definition()
