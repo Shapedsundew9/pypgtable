@@ -185,6 +185,7 @@ class raw_table():
         """Generate to break up an iterable of dictionaries into batches with the same keys.
 
         The order of dictionaries in the iterable is preserved (if it is ordered).
+        Data keys that are not table columns are filtered out.
 
         Args
         ----
@@ -197,15 +198,17 @@ class raw_table():
         last_datum_keys = set()
         ordered_keys = tuple()
         current_batch = []
+        set_of_columns = set(self._columns)
         for datum in data:
-            if last_datum_keys == set(datum.keys()):
+            datum_keys = set(datum.keys()) & set_of_columns
+            if last_datum_keys == set(datum_keys):
                 current_batch.append([datum[k] for k in ordered_keys])
             else:
                 if current_batch:
                     yield ordered_keys, current_batch
-                ordered_keys = tuple(datum.keys())
+                ordered_keys = tuple(datum_keys)
                 current_batch = [[datum[k] for k in ordered_keys]]
-                last_datum_keys = set(datum.keys())
+                last_datum_keys = set(datum_keys)
         yield ordered_keys, current_batch
 
     # Get the table definition
@@ -319,7 +322,7 @@ class raw_table():
             _logger.debug(text_token({'I05000': {'sql': '\n'.join([self._sql_to_string(s) for s in sql_str_list])}}))
         return tuple((dbcur.fetchall() for dbcur in self._db_transaction(sql_str_list, repeatable)))
 
-    def select(self, query_str='', literals={}, columns=None, repeatable=False):
+    def select(self, query_str='', literals={}, columns='*', repeatable=False):
         """Select columns to return for rows matching query_str.
 
         Args
@@ -330,21 +333,21 @@ class raw_table():
             'test_table' the example query_str would result in the following SQL:
                 SELECT "column1", "column3" FROM "test_table" WHERE "column1" = 1 ORDER BY "column1" ASC
         literals (dict): Keys are labels used in query_str. Values are literals to replace the labels.
-        columns (iter): The columns to be returned on update. If None defined all columns are returned.
+        columns (iter): The columns to be returned on update. If '*' defined all columns are returned.
         repeatable (bool): If True select transaction is done with repeatable read isolation.
 
         Returns
         -------
         (list(tuple)): An list of the values specified by columns for the specified query_str.
         """
-        if columns is None:
+        if columns == '*':
             columns = self._columns
         columns = sql.SQL(', ').join(map(sql.Identifier, columns))
         format_dict = self._format_dict(literals)
         sql_str_list = [_TABLE_SELECT_SQL.format(columns, self._table, sql.SQL(query_str).format(**format_dict))]
         return self._sql_queries_transaction(sql_str_list, repeatable)[0]
 
-    def recursive_select(self, query_str, literals={}, columns=None, repeatable=False):
+    def recursive_select(self, query_str, literals={}, columns='*', repeatable=False):
         """Recursive select of columns to return for rows matching query_str.
 
         Recursion is defined by the ptr_map (pointer map) in the table config.
@@ -365,7 +368,7 @@ class raw_table():
         ----
         query_str (str): Query SQL: See select() for details.
         literals (dict): Keys are labels used in query_str. Values are literals to replace the labels.
-        columns (iter): The columns to be returned on update. If None defined all columns are returned.
+        columns (iter): The columns to be returned on update. If '*' defined all columns are returned.
         repeatable (bool): If True select transaction is done with repeatable read isolation.
 
         Returns
@@ -373,7 +376,7 @@ class raw_table():
         (list(tuple)): An list of the values specified by columns for the specified recursive query_str
             and pointer map.
         """
-        if columns is None:
+        if columns == '*':
             columns = self._columns
         if not (self._pm_columns <= set(columns)):
             raise ValueError("columns must be a the same or a superset of ptr_map columns.")
@@ -417,8 +420,8 @@ class raw_table():
         (list(tuple)): An list of the values specified by returning for each updated row or [] if returning is
             an empty iterable or None.
         """
-        if returning is None:
-            returning = tuple()
+        if returning == '*':
+            returning = self._columns
         if update_str is None:
             update_str = ",".join((_DEFAULT_UPDATE_STR.format(k) for k in columns if k != self._primary_key))
         if update_str != _TABLE_INSERT_CONFLICT_STR:
@@ -468,8 +471,8 @@ class raw_table():
         (list(tuple)): An list of the values specified by returning for each updated row or [] if returning is
             an empty iterable or None.
         """
-        if returning is None:
-            returning = tuple()
+        if returning == '*':
+            returning = self._columns
         format_dict = self._format_dict(literals)
         sql_str = _TABLE_UPDATE_SQL.format(self._table, sql.SQL(update_str).format(
             **format_dict), sql.SQL(query_str).format(**format_dict))
@@ -497,8 +500,8 @@ class raw_table():
         (list(tuple)): An list of the values specified by returning for each updated row or [] if returning is
             an empty iterable or None.
         """
-        if returning is None:
-            returning = tuple()
+        if returning == '*':
+            returning = self._columns
         format_dict = self._format_dict(literals)
         sql_str = _TABLE_DELETE_SQL.format(self._table, sql.SQL(query_str).format(**format_dict))
         if returning:

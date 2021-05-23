@@ -60,6 +60,7 @@ class table():
         self.upsert((new_values,))
 
     def _return_container(self, columns, values, container='dict'):
+        if columns == '*': columns = self.raw._columns
         if container == 'tuple':
             return self.decode_values_to_tuple(columns, values)
         if container == 'list':
@@ -172,7 +173,7 @@ class table():
         """
         return self._conversions[column]['encode'](value)
 
-    def select(self, query_str='', literals={}, columns=None, repeatable=False, container='dict'):
+    def select(self, query_str='', literals={}, columns='*', repeatable=False, container='dict'):
         """Select columns to return for rows matching query_str.
 
         Args
@@ -184,7 +185,7 @@ class table():
                 SELECT "column1", "column3" FROM "test_table" WHERE "column1" = 1 ORDER BY "column1" ASC
         literals (dict): Keys are labels used in query_str. Values are literals to replace the labels.
             NOTE: Literal values for encoded columns must be encoded. See encode_value().
-        columns (iter): The columns to be returned on update. If None defined all columns are returned.
+        columns (iter): The columns to be returned on update. If '*' defined all columns are returned.
         repeatable (bool): If True select transaction is done with repeatable read isolation.
         container (str): Defines the type of container in the returned list. Set as either 'list', 'tuple'
             or any other value to return dicts.
@@ -193,12 +194,10 @@ class table():
         -------
         (list('container')): An list of the values specified by columns for the specified query_str.
         """
-        if columns is None:
-            columns = self.raw._columns
         values = self.raw.select(query_str, literals, columns, repeatable)
         return self._return_container(columns, values, container)
 
-    def recursive_select(self, query_str='', literals={}, columns=None, repeatable=False, container='dict'):
+    def recursive_select(self, query_str='', literals={}, columns='*', repeatable=False, container='dict'):
         """Recursive select of columns to return for rows matching query_str.
 
         Recursion is defined by the ptr_map (pointer map) in the table config.
@@ -220,7 +219,7 @@ class table():
         query_str (str): Query SQL: See select() for details.
         literals (dict): Keys are labels used in query_str. Values are literals to replace the labels.
             NOTE: Literal values for encoded columns must be encoded. See encode_value().
-        columns (iter): The columns to be returned on update. If None defined all columns are returned.
+        columns (iter): The columns to be returned on update. If '*' defined all columns are returned.
         repeatable (bool): If True select transaction is done with repeatable read isolation.
         container (str): Defines the type of container in the returned list. Set as either 'list', 'tuple'
             or any other value to return dicts.
@@ -230,8 +229,6 @@ class table():
         (list('container')): An list of the values specified by columns for the specified recursive query_str
             and pointer map.
         """
-        if columns is None:
-            columns = self.raw._columns
         values = self.raw.recursive_select(
             query_str, literals, columns, repeatable)
         return self._return_container(columns, values, container)
