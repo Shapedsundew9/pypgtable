@@ -1,11 +1,8 @@
 """Application layer wrapper for raw_table."""
 
 
-from copy import copy, deepcopy
-from os.path import join
-from json import load
+from copy import deepcopy
 from logging import getLogger
-from cerberus import Validator
 from .raw_table import raw_table
 
 
@@ -58,7 +55,8 @@ class table():
         self.upsert((new_values,))
 
     def _return_container(self, columns, values, container='dict'):
-        if columns == '*': columns = self.raw._columns
+        if columns == '*':
+            columns = self.raw._columns
         if container == 'tuple':
             return self.decode_values_to_tuple(columns, values)
         if container == 'list':
