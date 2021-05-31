@@ -6,7 +6,6 @@ from os.path import join
 from json import load
 from time import sleep
 from psycopg2 import sql, errors, ProgrammingError
-from cerberus import Validator
 from .database import db_transaction, db_connect, db_exists, db_create, db_delete
 from .common import backoff_generator
 from .validators import raw_table_config_validator, raw_table_column_config_validator as rtccv
@@ -24,6 +23,12 @@ register_token_code("I05003", "Table {table} in database {dbname} does not yet e
 register_token_code("I05004", "Adding data to table {table} from {file}.")
 register_token_code("E05000", "Configuration error: {error}")
 register_token_code("E05001", "{set} columns differ between DB {dbname} and table {table} configuration.")
+register_token_code("E05002", "Existing database table {table} columns do not match configuration. Column {column} "
+                    "PRIMARY KEY constraint is inconsistent.")
+register_token_code("E05003", "Existing database table {table} columns do not match configuration. Column {column} "
+                    "UNIQUE constraint is inconsistent.")
+register_token_code("E05004", "Existing database table {table} columns do not match configuration. Column {column} "
+                    "NOT NULL constraint is inconsistent.")
 
 
 _INITIAL_DELAY = 0.125
@@ -33,12 +38,17 @@ _TABLE_LEN_SQL = sql.SQL("SELECT COUNT(*) FROM {0}")
 _TABLE_EXISTS_SQL = sql.SQL(
     "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = {0})")
 _TABLE_DEFINITION_SQL = sql.SQL(
-    "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND table_name = {0}")
-_TABLE_GET_PRIMARY_KEY_SQL = sql.SQL("SELECT c.column_name, tc.constraint_type FROM information_schema.table_constraints tc "
-    "JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name) "
-    "JOIN information_schema.columns AS c ON c.table_schema = tc.constraint_schema "
-    "AND tc.table_name = c.table_name AND ccu.column_name = c.column_name "
-    "WHERE tc.table_name = {0}")
+    "SELECT column_name, data_type, is_nullable FROM information_schema.columns "
+    " WHERE table_schema = 'public' AND table_name = {0}")
+_TABLE_GET_PRIMARY_KEY_SQL = sql.SQL(
+    (
+        "SELECT c.column_name, tc.constraint_type FROM information_schema.table_constraints tc "
+        "JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name) "
+        "JOIN information_schema.columns AS c ON c.table_schema = tc.constraint_schema "
+        "AND tc.table_name = c.table_name AND ccu.column_name = c.column_name "
+        "WHERE tc.table_name = {0}"
+        )
+    )
 _TABLE_CREATE_SQL = sql.SQL("CREATE TABLE {0} ({1})")
 _TABLE_INDEX_SQL = sql.SQL("CREATE INDEX {0} ON {1}")
 _TABLE_INDEX_COLUMN_SQL = sql.SQL("({0})")
@@ -250,14 +260,11 @@ class raw_table():
                 self.config['table'], unmatched_set))
         for column in columns:
             if schema[column]['primary_key'] != self.config['schema'][column]['primary_key']:
-                raise ValueError(("Existing database table {} columns do not match configuration. Column {} "
-                    "PRIMARY KEY constraint is inconsistent.").format(self.config['table'], column))
+                raise ValueError(text_token({'E05002': {'table': self.config['table'], 'column': column}}))
             if schema[column]['unique'] != self.config['schema'][column]['unique']:
-                raise ValueError(("Existing database table {} columns do not match configuration. Column {} "
-                    "UNIQUE constraint is inconsistent.").format(self.config['table'], column))
+                raise ValueError(text_token({'E05003': {'table': self.config['table'], 'column': column}}))
             if schema[column]['nullable'] != self.config['schema'][column]['nullable']:
-                raise ValueError(("Existing database table {} columns do not match configuration. Column {} "
-                    "NOT NULL constraint is inconsistent.").format(self.config['table'], column))
+                raise ValueError(text_token({'E05004': {'table': self.config['table'], 'column': column}}))
         return columns
 
     def _table_exists(self):
