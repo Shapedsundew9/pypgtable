@@ -17,7 +17,7 @@ _CONFIG = {
     'schema': {
         'name': {
             'type': 'VARCHAR',
-            'null': True
+            'nullable': True
         },
         'id': {
             'type': 'INTEGER',
@@ -25,11 +25,11 @@ _CONFIG = {
         },
         'left': {
             'type': 'INTEGER',
-            'null': True
+            'nullable': True
         },
         'right': {
             'type': 'INTEGER',
-            'null': True
+            'nullable': True
         },
         'uid': {
             'type': 'INTEGER',
@@ -41,10 +41,9 @@ _CONFIG = {
             'default': 'NOW()'
         },
         'metadata': {
-            'type': 'INTEGER',
-            'array': True,
+            'type': 'INTEGER[]',
             'index': 'btree',
-            'null': True
+            'nullable': True
         }
     },
     'ptr_map': {
@@ -184,7 +183,7 @@ def test_select_dict():
     t = table(config)
     data = t.select('WHERE {id} = {seven}', {'seven': 7},
                     columns=('uid', 'left', 'right'))
-    assert data == [{'uid': 107, 'left': 13, 'right': None}]
+    assert data == {7: {'id': 7, 'uid': 107, 'left': 13, 'right': None}}
 
 
 def test_select_list():
@@ -245,7 +244,7 @@ def test_insert():
             'metadata': [], 'name': 'William'}
     ]
     t.insert(data)
-    results = t.select('WHERE {id} > 90 ORDER BY {id} ASC', columns=columns)
+    results = list(t.select('WHERE {id} > 90 ORDER BY {id} ASC', columns=columns).values())
     assert data == results
 
 
@@ -257,7 +256,7 @@ def test_update():
                          'qid': 0, 'new': '_new'}, ('id', 'name'))
     row = t.select('WHERE {id} = 0', columns=(
         'id', 'left', 'right', 'uid', 'metadata', 'name'), container='tuple')
-    assert returning == [{'id': 0, 'name': 'root_new'}]
+    assert returning == {0: {'id': 0, 'name': 'root_new'}}
     assert row == [(0, 1, 2, 100, None, "root_new")]
 
 
@@ -270,19 +269,4 @@ def test_delete():
     row = t.select('WHERE {id} = 7', columns=(
         'id', 'left', 'right', 'uid', 'metadata', 'name'))
     assert returning == [[107, 7]]
-    assert row == []
-
-
-def test_validate():
-    """As it says on the tin."""
-    config = deepcopy(_CONFIG)
-    t = table(config)
-    data = [
-        {'id': 91, 'left': 3, 'right': 4, 'uid': 901,
-            'metadata': [1, 2], 'name': 'Harry'},
-        {'id': 92, 'left': 5, 'right': 6, 'uid': 902,
-            'metadata': [], 'name': 'William'}
-    ]
-    results = t.validate(data)
-    assert len(results) == len(data)
-    assert all(results)
+    assert row == {}

@@ -1,37 +1,16 @@
 {
     "type": {
         "type": "string",
-        "allowed": [
-            "BOOLEAN",
-            "BYTEA",
-            "BIGINT",
-            "INTEGER",
-            "SMALLINT",
-            "TIMESTAMP",
-            "VARCHAR",
-            "SERIAL",
-            "REAL",
-            "DOUBLE PRECISION",
-            "SMALLSERIAL",
-            "BIGSERIAL"
-        ],
         "required": true,
         "meta": {
-            "description": "Postgresql type keyword."
+            "description": "Postgresql type expression."
         }
     },
-    "null": {
+    "nullable": {
         "type": "boolean",
         "default": false,
         "meta": {
             "description": "Allow NULL entries if True."
-        }
-    },
-    "array": {
-        "type": "boolean",
-        "default": false,
-        "meta": {
-            "description": "Entry is an array of 'type' if True."
         }
     },
     "primary_key": {

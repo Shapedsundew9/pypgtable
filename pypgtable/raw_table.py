@@ -9,7 +9,7 @@ from psycopg2 import sql, errors, ProgrammingError
 from cerberus import Validator
 from .database import db_transaction, db_connect, db_exists, db_create, db_delete
 from .common import backoff_generator
-from .validators import raw_table_config_validator
+from .validators import raw_table_config_validator, raw_table_column_config_validator as rtccv
 from .utils.text_token import text_token, register_token_code
 
 
@@ -33,7 +33,12 @@ _TABLE_LEN_SQL = sql.SQL("SELECT COUNT(*) FROM {0}")
 _TABLE_EXISTS_SQL = sql.SQL(
     "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = {0})")
 _TABLE_DEFINITION_SQL = sql.SQL(
-    "SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name = {0}")
+    "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND table_name = {0}")
+_TABLE_GET_PRIMARY_KEY_SQL = sql.SQL("SELECT c.column_name, tc.constraint_type FROM information_schema.table_constraints tc "
+    "JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name) "
+    "JOIN information_schema.columns AS c ON c.table_schema = tc.constraint_schema "
+    "AND tc.table_name = c.table_name AND ccu.column_name = c.column_name "
+    "WHERE tc.table_name = {0}")
 _TABLE_CREATE_SQL = sql.SQL("CREATE TABLE {0} ({1})")
 _TABLE_INDEX_SQL = sql.SQL("CREATE INDEX {0} ON {1}")
 _TABLE_INDEX_COLUMN_SQL = sql.SQL("({0})")
@@ -216,7 +221,7 @@ class raw_table():
     def _table_definition(self):
         """Get the table schema when it is defined in the database.
 
-        Validate that the DB table has the same columns as the configuration.
+        Validate that the DB table has the same columns as the configuration schema if it is defined.
 
         Returns
         -------
@@ -229,19 +234,30 @@ class raw_table():
             _logger.info(text_token({'I05003': {'table': self.config['table'],
                                                 'dbname': self.config['database']['dbname'], 'backoff': backoff}}))
             sleep(backoff)
-        dbcur = self._db_transaction((_TABLE_DEFINITION_SQL.format(sql.Literal(self.config['table'])),))[0]
-        columns = tuple((column[0] for column in dbcur.fetchall()))
-        if 'schema' not in self.config:
-            pass
-            # TODO: Create the schema from the table definition
-            # Set self._primary_key
+        results = self._db_transaction((_TABLE_DEFINITION_SQL.format(sql.Literal(self.config['table'])),))[0].fetchall()
+        columns = tuple((column[0] for column in results))
+        schema = {c: rtccv.normalized({'type': d.upper(), 'nullable': n == 'YES'}) for c, d, n in results}
+        constraints = self._db_transaction((_TABLE_GET_PRIMARY_KEY_SQL.format(sql.Literal(self.config['table'])),))
+        for column, constraint in constraints[0].fetchall():
+            schema[column]['primary_key'] = constraint == 'PRIMARY KEY'
+            schema[column]['unique'] = constraint == 'UNIQUE'
+        self.config.setdefault('schema', schema)
         unmatched_set = set(columns) - set(self.config['schema'].keys())
-        # TODO: Could validate types & properties too.
         if unmatched_set:
             _logger.error(text_token({'E05001': {
                           'set': unmatched_set, 'dbname': self.config['database']['dbname'], 'table': self.config['table']}}))
             raise ValueError("Existing database table {} columns do not match configuration. Unmatched set = {}".format(
                 self.config['table'], unmatched_set))
+        for column in columns:
+            if schema[column]['primary_key'] != self.config['schema'][column]['primary_key']:
+                raise ValueError(("Existing database table {} columns do not match configuration. Column {} "
+                    "PRIMARY KEY constraint is inconsistent.").format(self.config['table'], column))
+            if schema[column]['unique'] != self.config['schema'][column]['unique']:
+                raise ValueError(("Existing database table {} columns do not match configuration. Column {} "
+                    "UNIQUE constraint is inconsistent.").format(self.config['table'], column))
+            if schema[column]['nullable'] != self.config['schema'][column]['nullable']:
+                raise ValueError(("Existing database table {} columns do not match configuration. Column {} "
+                    "NOT NULL constraint is inconsistent.").format(self.config['table'], column))
         return columns
 
     def _table_exists(self):
@@ -268,9 +284,7 @@ class raw_table():
         columns, self._columns = [], []
         for column, definition in self.config['schema'].items():
             sql_str = " " + definition['type']
-            if definition['array']:
-                sql_str += " []"
-            if not definition['null']:
+            if not definition['nullable']:
                 sql_str += " NOT NULL"
             if definition['primary_key']:
                 sql_str += " PRIMARY KEY"
@@ -333,7 +347,9 @@ class raw_table():
             'test_table' the example query_str would result in the following SQL:
                 SELECT "column1", "column3" FROM "test_table" WHERE "column1" = 1 ORDER BY "column1" ASC
         literals (dict): Keys are labels used in query_str. Values are literals to replace the labels.
-        columns (iter): The columns to be returned on update. If '*' defined all columns are returned.
+        columns (iter(str) or str): The columns to be returned on update if an iterable of str.
+            If '*' all columns are returned. If another str interpreted as formatted SQL after 'SELECT'
+            and before 'FROM' as query_str.
         repeatable (bool): If True select transaction is done with repeatable read isolation.
 
         Returns
@@ -342,8 +358,11 @@ class raw_table():
         """
         if columns == '*':
             columns = self._columns
-        columns = sql.SQL(', ').join(map(sql.Identifier, columns))
         format_dict = self._format_dict(literals)
+        if isinstance(columns, str):
+            columns = sql.SQL(query_str).format(**format_dict)
+        else:
+            columns = sql.SQL(', ').join(map(sql.Identifier, columns))
         sql_str_list = [_TABLE_SELECT_SQL.format(columns, self._table, sql.SQL(query_str).format(**format_dict))]
         return self._sql_queries_transaction(sql_str_list, repeatable)[0]
 
@@ -508,25 +527,3 @@ class raw_table():
             sql_str += _TABLE_RETURNING_SQL + sql.SQL(',').join([sql.Identifier(column) for column in returning])
         retval = self._db_transaction((sql_str,), read=False)[0]
         return retval.fetchall() if returning else []
-
-    def validate(self, columns, values):
-        """Validate entries.
-
-        Entries are blindly validated (return True for all) if the table configuration
-        does not have a format_file defined.
-
-        Args
-        ----
-        entries (list(dict)): List of entries to validate.
-
-        Returns
-        -------
-        (tuple(bool)): Tuple with the same length as entries with the validity of each entry.
-        """
-        if 'format_file' in self.config:
-            if self._entry_validator is None:
-                schema_path = join(self.config['format_file_folder'], self.config['format_file'])
-                with open(schema_path, "r") as schema_file:
-                    self._entry_validator = Validator(load(schema_file))
-            return tuple((self._entry_validator(dict(zip(columns, value))) for value in values))
-        return (True,) * len(values)

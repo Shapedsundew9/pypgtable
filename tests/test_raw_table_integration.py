@@ -18,7 +18,7 @@ _CONFIG = {
     'schema': {
         'name': {
             'type': 'VARCHAR',
-            'null': True
+            'nullable': True
         },
         'id': {
             'type': 'INTEGER',
@@ -26,11 +26,11 @@ _CONFIG = {
         },
         'left': {
             'type': 'INTEGER',
-            'null': True
+            'nullable': True
         },
         'right': {
             'type': 'INTEGER',
-            'null': True
+            'nullable': True
         },
         'uid': {
             'type': 'INTEGER',
@@ -42,10 +42,9 @@ _CONFIG = {
             'default': 'NOW()'
         },
         'metadata': {
-            'type': 'INTEGER',
-            'array': True,
+            'type': 'INTEGER[]',
             'index': 'btree',
-            'null': True
+            'nullable': True
         }
     },
     'ptr_map': {
@@ -133,17 +132,6 @@ def test_delete():
     assert row == []
 
 
-def test_validate():
-    """As it says on the tin."""
-    config = deepcopy(_CONFIG)
-    rt = raw_table(config)
-    columns = ('id', 'left', 'right', 'uid', 'metadata', 'name')
-    values = ((91, 3, 4, 901, [1, 2], "Harry"), (92, 5, 6, 902, [], "William"))
-    results = rt.validate(columns, values)
-    assert len(results) == len(values)
-    assert all(results)
-
-
 def test_duplicate_table():
     """Validate a the SQL sequence when a table exists."""
     config1 = deepcopy(_CONFIG)
@@ -155,3 +143,25 @@ def test_duplicate_table():
         assert t1 == t2
     rt1.delete_table()
     rt2.delete_table()
+
+
+def test_discover_table():
+    """Validate table discovery.
+
+    Create a table rt1 and fill it with some data.
+    Instanciate a table rt2 with no schema from the same DB & table name as rt1.
+    rt1 and rt2 should point at the same table.
+    """
+    config1 = deepcopy(_CONFIG)
+    config1['data_files'] = []
+    rt1 = raw_table(config1)
+    columns = ("id", "left", "right", "uid", "metadata", "name")
+    values = [(91, 3, 4, 901, [1, 2], "Harry"), (92, 5, 6, 902, [], "William")]
+    rt1.insert(columns, values)
+    rt2 = raw_table({'database': _CONFIG['database'], 'table': _CONFIG['table']})
+    data = rt2.select(columns=columns)
+    assert data == values
+    values.append((0, 1, 2, 201, [], "Diana"))
+    rt2.insert(columns, [values[-1]])
+    data = rt1.select(columns=columns)
+    assert data == values

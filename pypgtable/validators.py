@@ -20,8 +20,9 @@ class _raw_table_config_validator(BaseValidator):
         """Normalize sub-documents."""
         document = deepcopy(document)
         document['database'] = database_config_validator.normalized(document['database'])
-        for column in document['schema']:
-            document['schema'][column] = raw_table_column_config_validator.normalized(document['schema'][column])
+        if 'schema' in document:
+            for column in document['schema']:
+                document['schema'][column] = raw_table_column_config_validator.normalized(document['schema'][column])
         return self.normalized(document)
 
     def _check_with_valid_database_config(self, field, value):

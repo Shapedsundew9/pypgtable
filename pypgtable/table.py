@@ -1,7 +1,7 @@
 """Application layer wrapper for raw_table."""
 
 
-from copy import deepcopy
+from copy import copy, deepcopy
 from os.path import join
 from json import load
 from logging import getLogger
@@ -37,10 +37,10 @@ class table():
         (dict) with the row values or an empty dict if the primary key does not exist.
         """
         if self.raw._primary_key is None:
-            raise ValueError('SELECT row on primary key but no primary key defined!')
-        pk_value = self.encode_value(self.raw._primary_key, pk_value)
-        result = self.select('WHERE {' + self.raw._primary_key + '} = {_pk_value}', {'_pk_value': pk_value})
-        return result[0] if result else {}
+            raise ValueError("SELECT row on primary key but no primary key defined!")
+        encoded_pk_value = self.encode_value(self.raw._primary_key, pk_value)
+        result = self.select('WHERE {' + self.raw._primary_key + '} = {_pk_value}', {'_pk_value': encoded_pk_value})
+        return result[pk_value] if result else {}
 
     def __setitem__(self, pk_value, values):
         """Upsert the row with primary key pk_value using values.
@@ -53,8 +53,6 @@ class table():
         pk_value (obj): A primary key value.
         values (obj): A dict of column:value
         """
-        if self.raw._primary_key is None:
-            raise ValueError('SELECT row on primary key but no primary key defined!')
         new_values = deepcopy(values)
         new_values[self.raw._primary_key] = pk_value
         self.upsert((new_values,))
@@ -85,7 +83,7 @@ class table():
         self._conversions[column]['decode'] = decode_func
 
     def decode_values_to_dict(self, columns, values):
-        """Create a list of dicts with columns keys and decoded values from values.
+        """Create a dict of dicts with the primnary key as the key and columns keys and decoded values as each dict.
 
         The order of the dicts in the returned list is the same as the rows of values in values.
         Each value is decoded by the registered conversion function (see register_conversion()) or
@@ -98,9 +96,13 @@ class table():
 
         Returns
         -------
-        list(dict)
+        dict(dict)
         """
-        return [{column: self._conversions[column]['decode'](value) for column, value in zip(columns, row)} for row in values]
+        retval = {}
+        for row in values:
+            subdict = {column: self._conversions[column]['decode'](value) for column, value in zip(columns, row)}
+            retval[subdict[self.raw._primary_key]] = subdict
+        return retval
 
     def decode_values_to_list(self, columns, values):
         """Create a list of lists with columns keys and decoded values from values.
@@ -194,8 +196,11 @@ class table():
         -------
         (list('container')): An list of the values specified by columns for the specified query_str.
         """
-        values = self.raw.select(query_str, literals, columns, repeatable)
-        return self._return_container(columns, values, container)
+        _columns = self.raw._columns if columns == '*' else list(columns)
+        if container == 'dict' and self.raw._primary_key not in _columns:
+            _columns.append(self.raw._primary_key)
+        values = self.raw.select(query_str, literals, _columns, repeatable)
+        return self._return_container(_columns, values, container)
 
     def recursive_select(self, query_str='', literals={}, columns='*', repeatable=False, container='dict'):
         """Recursive select of columns to return for rows matching query_str.
@@ -229,9 +234,11 @@ class table():
         (list('container')): An list of the values specified by columns for the specified recursive query_str
             and pointer map.
         """
-        values = self.raw.recursive_select(
-            query_str, literals, columns, repeatable)
-        return self._return_container(columns, values, container)
+        _columns = self.raw._columns if columns == '*' else list(columns)
+        if container == 'dict' and self.raw._primary_key not in _columns:
+            _columns.append(self.raw._primary_key)
+        values = self.raw.recursive_select(query_str, literals, columns, repeatable)
+        return self._return_container(_columns, values, container)
 
     def upsert(self, values_dict, update_str=None, literals={}, returning=tuple(), container='dict'):
         """Upsert values.
@@ -261,11 +268,14 @@ class table():
         (list('container')): An list of the values specified by returning for each updated row or [] if returning is
             an empty iterable or None.
         """
+        _returning = self.raw._columns if returning == '*' else list(returning)
+        if container == 'dict' and returning and self.raw._primary_key not in _returning:
+            _returning.append(self.raw._primary_key)
         retval = []
         for columns, values in self.raw.batch_dict_data(values_dict):
             encoded_values = self.encode_values_to_tuple(columns, values)
-            retval.extend(self.raw.upsert(columns, encoded_values, update_str, literals, returning))
-        return self._return_container(returning, retval, container)
+            retval.extend(self.raw.upsert(columns, encoded_values, update_str, literals, _returning))
+        return self._return_container(_returning, retval, container)
 
     def insert(self, values_dict):
         """Insert values.
@@ -303,8 +313,11 @@ class table():
         (list('container')): An list of the values specified by returning for each updated row or [] if returning is
             an empty iterable or None.
         """
+        _returning = self.raw._columns if returning == '*' else list(returning)
+        if container == 'dict' and returning and self.raw._primary_key not in _returning:
+            _returning.append(self.raw._primary_key)
         retval = self.raw.update(update_str, query_str, literals, returning)
-        return self._return_container(returning, retval, container)
+        return self._return_container(_returning, retval, container)
 
     def delete(self, query_str, literals={}, returning=tuple(), container='dict'):
         """Delete rows from the table.
@@ -328,30 +341,8 @@ class table():
         (list('container')): An list of the values specified by returning for each updated row or [] if returning is
             an empty iterable or None.
         """
+        _returning = self.raw._columns if returning == '*' else list(returning)
+        if container == 'dict' and returning and self.raw._primary_key not in _returning:
+            _returning.append(self.raw._primary_key)
         retval = self.raw.delete(query_str, literals, returning)
-        return self._return_container(returning, retval, container)
-
-    def validate(self, values_dict):
-        """Validate entries.
-
-        Entries are blindly validated (return True for all) if the table configuration
-        does not have a format_file defined.
-        NOTE: The Validator format must be defined for the decoded values. If the format
-        is for encoded values use self.raw.validate().
-
-        Args
-        ----
-        values_dict (iter(dict)): Keys are column names.
-
-        Returns
-        -------
-        (tuple(bool)): Tuple with the same length as entries with the validity of each entry.
-        """
-        if 'format_file' in self.raw.config:
-            if self._entry_validator is None:
-                schema_path = join(
-                    self.raw.config['format_file_folder'], self.raw.config['format_file'])
-                with open(schema_path, "r") as schema_file:
-                    self._entry_validator = Validator(load(schema_file))
-            return tuple((self._entry_validator(value) for value in values_dict))
-        return (True,) * len(values_dict)
+        return self._return_container(_returning, retval, container)

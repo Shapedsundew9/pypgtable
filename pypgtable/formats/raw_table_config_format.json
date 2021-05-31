@@ -17,7 +17,6 @@
         }
     },
     "schema": {
-        "required": true,
         "type": "dict",
         "minlength": 1,
         "maxlength": 1600,
@@ -38,6 +37,7 @@
     },
     "ptr_map": {
         "type": "dict",
+        "default": {},
         "check_with": "valid_ptr_map_config",
         "meta": {
             "description": "Defines relationships between fields for tables consisting of graph node rows."
