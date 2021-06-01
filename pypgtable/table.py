@@ -9,7 +9,7 @@ from .raw_table import raw_table
 _logger = getLogger('pypgtable')
 
 
-def _IDENTITY_FUNC(x):
+def _ID_FUNC(x):
     return x
 
 
@@ -20,7 +20,7 @@ class table():
         """Create a table object."""
         self.raw = raw_table(config)
         self._entry_validator = None
-        self._conversions = {column: {'encode': _IDENTITY_FUNC, 'decode': _IDENTITY_FUNC} for column in config['schema']}
+        self._conversions = {column: {'encode': _ID_FUNC, 'decode': _ID_FUNC} for column in self.raw.config['schema']}
 
     def __getitem__(self, pk_value):
         """Query the table for the row with primary key value pk_value.
@@ -37,7 +37,7 @@ class table():
             raise ValueError("SELECT row on primary key but no primary key defined!")
         encoded_pk_value = self.encode_value(self.raw._primary_key, pk_value)
         result = self.select('WHERE {' + self.raw._primary_key + '} = {_pk_value}', {'_pk_value': encoded_pk_value})
-        return result[pk_value] if result else {}
+        return result[0] if result else {}
 
     def __setitem__(self, pk_value, values):
         """Upsert the row with primary key pk_value using values.
@@ -61,6 +61,8 @@ class table():
             return self.decode_values_to_tuple(columns, values)
         if container == 'list':
             return self.decode_values_to_list(columns, values)
+        if container == 'pkdict':
+            return self.decode_values_to_pkdict(columns, values)
         return self.decode_values_to_dict(columns, values)
 
     def register_conversion(self, column, encode_func, decode_func):
@@ -81,7 +83,22 @@ class table():
         self._conversions[column]['decode'] = decode_func
 
     def decode_values_to_dict(self, columns, values):
-        """Create a dict of dicts with the primnary key as the key and columns keys and decoded values as each dict.
+        """Create a list of dicts with columns keys and decoded values from values.
+        The order of the dicts in the returned list is the same as the rows of values in values.
+        Each value is decoded by the registered conversion function (see register_conversion()) or
+        unchanged if no conversion has been registered.
+        Args
+        ----
+        columns (iter(str)): Column names for each of the rows in values.
+        values  (iter(tuple/list)): Iterable of rows (ordered iterables) with values in the order as columns.
+        Returns
+        -------
+        list(dict)
+        """
+        return [{column: self._conversions[column]['decode'](value) for column, value in zip(columns, row)} for row in values]
+
+    def decode_values_to_pkdict(self, columns, values):
+        """Create a dict of dicts with the primary key as the key and columns keys and decoded values as each dict.
 
         The order of the dicts in the returned list is the same as the rows of values in values.
         Each value is decoded by the registered conversion function (see register_conversion()) or
@@ -195,7 +212,7 @@ class table():
         (list('container')): An list of the values specified by columns for the specified query_str.
         """
         _columns = self.raw._columns if columns == '*' else list(columns)
-        if container == 'dict' and self.raw._primary_key not in _columns:
+        if container == 'pkdict' and self.raw._primary_key not in _columns:
             _columns.append(self.raw._primary_key)
         values = self.raw.select(query_str, literals, _columns, repeatable)
         return self._return_container(_columns, values, container)
@@ -233,7 +250,7 @@ class table():
             and pointer map.
         """
         _columns = self.raw._columns if columns == '*' else list(columns)
-        if container == 'dict' and self.raw._primary_key not in _columns:
+        if container == 'pkdict' and self.raw._primary_key not in _columns:
             _columns.append(self.raw._primary_key)
         values = self.raw.recursive_select(query_str, literals, columns, repeatable)
         return self._return_container(_columns, values, container)
@@ -267,7 +284,7 @@ class table():
             an empty iterable or None.
         """
         _returning = self.raw._columns if returning == '*' else list(returning)
-        if container == 'dict' and returning and self.raw._primary_key not in _returning:
+        if container == 'pkdict' and returning and self.raw._primary_key not in _returning:
             _returning.append(self.raw._primary_key)
         retval = []
         for columns, values in self.raw.batch_dict_data(values_dict):
@@ -312,7 +329,7 @@ class table():
             an empty iterable or None.
         """
         _returning = self.raw._columns if returning == '*' else list(returning)
-        if container == 'dict' and returning and self.raw._primary_key not in _returning:
+        if container == 'pkdict' and returning and self.raw._primary_key not in _returning:
             _returning.append(self.raw._primary_key)
         retval = self.raw.update(update_str, query_str, literals, returning)
         return self._return_container(_returning, retval, container)
@@ -340,7 +357,7 @@ class table():
             an empty iterable or None.
         """
         _returning = self.raw._columns if returning == '*' else list(returning)
-        if container == 'dict' and returning and self.raw._primary_key not in _returning:
+        if container == 'pkdict' and returning and self.raw._primary_key not in _returning:
             _returning.append(self.raw._primary_key)
         retval = self.raw.delete(query_str, literals, returning)
         return self._return_container(_returning, retval, container)

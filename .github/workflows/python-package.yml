@@ -57,7 +57,7 @@ jobs:
       run: |
         pip install pytest
         pip install pytest-cov
-        pytest --doctest-modules --junitxml=junit/test-results.xml --cov=pypgtable --cov-report=xml --cov-report=html --cov-config=.coverage
+        pytest --doctest-modules --junitxml=junit/test-results.xml --cov=pypgtable --cov-report=xml --cov-report=html --cov-config=.coveragerc
     - name: Upload coverage to Codecov
       # https://github.com/marketplace/actions/codecov
       uses: codecov/codecov-action@v1
