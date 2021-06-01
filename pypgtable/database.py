@@ -240,7 +240,7 @@ def db_exists(dbname, config):
     except ProgrammingError as e:
         if e.pgcode == errors.InsufficientPrivilege:
             _logger.warning(text_token({'W04004': {
-                            'user': config['user'], 'mdb': config['maintenance_db'], 'db': config['dbname']}}))
+                            'user': config['user'], 'mdb': config['maintenance_db'], 'db': dbname}}))
             return True
         raise e
     _logger.info(_DB_EXISTS_SQL.as_string(connection))

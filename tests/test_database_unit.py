@@ -1,6 +1,7 @@
 """Unit tests for the database.py module."""
 
-from psycopg2 import sql, OperationalError
+from copy import deepcopy
+from psycopg2 import sql, OperationalError, ProgrammingError, errors
 from psycopg2.extensions import ISOLATION_LEVEL_DEFAULT, ISOLATION_LEVEL_REPEATABLE_READ
 from pypgtable import database
 from pypgtable.utils.reference import sequential_reference
@@ -562,6 +563,33 @@ def test_db_exists_p1(monkeypatch):
     monkeypatch.setattr(database, 'connect', mock_connect)
     monkeypatch.setattr(sql.SQL, 'as_string', mock_as_string)
     assert not db_exists("Does not exist", _MOCK_CONFIG)
+
+
+def test_db_exists_n0(monkeypatch):
+    """Test the case when the maintenance DB connection raises an error."""
+    db_disconnect_all()
+    def mock_db_connect(*args, **kwargs): raise ProgrammingError
+    def mock_as_string(*args, **kwargs): return "SQL string"
+    monkeypatch.setattr(database, 'db_connect', mock_db_connect)
+    monkeypatch.setattr(sql.SQL, 'as_string', mock_as_string)
+    try:
+        db_exists(_MOCK_DBNAME, _MOCK_CONFIG)
+    except ProgrammingError as e:
+        pass
+    else:
+        assert False
+
+
+def test_db_exists_n1(monkeypatch):
+    """Test the case when the maintenance DB connection raises an InsufficientPrivilege error."""
+    db_disconnect_all()
+    pgerr = deepcopy(ProgrammingError)
+    pgerr.pgcode = errors.InsufficientPrivilege
+    def mock_db_connect(*args, **kwargs): raise pgerr
+    def mock_as_string(*args, **kwargs): return "SQL string"
+    monkeypatch.setattr(database, 'db_connect', mock_db_connect)
+    monkeypatch.setattr(sql.SQL, 'as_string', mock_as_string)
+    assert db_exists(_MOCK_DBNAME, _MOCK_CONFIG)
 
 
 def test_db_create_p0(monkeypatch):
