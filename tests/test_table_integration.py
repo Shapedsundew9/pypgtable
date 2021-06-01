@@ -293,7 +293,7 @@ def test_discover_table():
     data = t2.select(columns=values_dict[0].keys())
     assert data == values_dict
     values_dict.append({'id': 0, 'left': 1, 'right': 2, 'uid': 201,
-                            'metadata': [], 'name': 'Diana'})
+                        'metadata': [], 'name': 'Diana'})
     t2.insert([values_dict[-1]])
     data = t1.select(columns=values_dict[0].keys())
     assert data == values_dict

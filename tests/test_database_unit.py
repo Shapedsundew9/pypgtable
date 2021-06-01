@@ -574,7 +574,7 @@ def test_db_exists_n0(monkeypatch):
     monkeypatch.setattr(sql.SQL, 'as_string', mock_as_string)
     try:
         db_exists(_MOCK_DBNAME, _MOCK_CONFIG)
-    except ProgrammingError as e:
+    except ProgrammingError:
         pass
     else:
         assert False
