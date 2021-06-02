@@ -182,7 +182,7 @@ def test_select_dict():
     config = deepcopy(_CONFIG)
     t = table(config)
     data = t.select('WHERE {id} = {seven}', {'seven': 7},
-                    columns=('uid', 'left', 'right'))
+                    columns=('uid', 'left', 'right'), container='pkdict')
     assert data == {7: {'id': 7, 'uid': 107, 'left': 13, 'right': None}}
 
 
@@ -244,7 +244,7 @@ def test_insert():
             'metadata': [], 'name': 'William'}
     ]
     t.insert(data)
-    results = list(t.select('WHERE {id} > 90 ORDER BY {id} ASC', columns=columns).values())
+    results = t.select('WHERE {id} > 90 ORDER BY {id} ASC', columns=columns)
     assert data == results
 
 
@@ -253,7 +253,7 @@ def test_update():
     config = deepcopy(_CONFIG)
     t = table(config)
     returning = t.update('{name}={name} || {new}', '{id}={qid}', {
-                         'qid': 0, 'new': '_new'}, ('id', 'name'))
+                         'qid': 0, 'new': '_new'}, ('id', 'name'), container='pkdict')
     row = t.select('WHERE {id} = 0', columns=(
         'id', 'left', 'right', 'uid', 'metadata', 'name'), container='tuple')
     assert returning == {0: {'id': 0, 'name': 'root_new'}}
@@ -269,4 +269,31 @@ def test_delete():
     row = t.select('WHERE {id} = 7', columns=(
         'id', 'left', 'right', 'uid', 'metadata', 'name'))
     assert returning == [[107, 7]]
-    assert row == {}
+    assert row == []
+
+
+def test_discover_table():
+    """Validate table discovery.
+
+    Create a table rt1 and fill it with some data.
+    Instanciate a table rt2 with no schema from the same DB & table name as rt1.
+    rt1 and rt2 should point at the same table.
+    """
+    config1 = deepcopy(_CONFIG)
+    config1['data_files'] = []
+    t1 = table(config1)
+    values_dict = [
+        {'id': 91, 'left': 3, 'right': 4, 'uid': 901,
+            'metadata': [1, 2], 'name': 'Harry'},
+        {'id': 92, 'left': 5, 'right': 6, 'uid': 902,
+            'metadata': [], 'name': 'William'}
+    ]
+    t1.insert(values_dict)
+    t2 = table({'database': _CONFIG['database'], 'table': _CONFIG['table']})
+    data = t2.select(columns=values_dict[0].keys())
+    assert data == values_dict
+    values_dict.append({'id': 0, 'left': 1, 'right': 2, 'uid': 201,
+                        'metadata': [], 'name': 'Diana'})
+    t2.insert([values_dict[-1]])
+    data = t1.select(columns=values_dict[0].keys())
+    assert data == values_dict
