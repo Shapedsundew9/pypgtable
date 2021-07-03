@@ -181,7 +181,7 @@ def test_invalid_config_1():
     config = deepcopy(_CONFIG)
     config['database']['port'] = 100
     try:
-        t = raw_table(config)
+        raw_table(config)
     except ValueError as e:
         assert 'E05000' in str(e)
         return
@@ -194,7 +194,7 @@ def test_invalid_config_2():
     config = deepcopy(_CONFIG)
     del config['schema']['name']['type']
     try:
-        t = raw_table(config)
+        raw_table(config)
     except ValueError as e:
         assert 'E05000' in str(e)
         return
@@ -207,7 +207,7 @@ def test_invalid_config_3():
     config = deepcopy(_CONFIG)
     config['schema']['id']['nullable'] = True
     try:
-        t = raw_table(config)
+        raw_table(config)
     except ValueError as e:
         assert 'E05000' in str(e)
         return
@@ -220,7 +220,7 @@ def test_invalid_config_4():
     config = deepcopy(_CONFIG)
     config['schema']['name']['primary_key'] = True
     try:
-        t = raw_table(config)
+        raw_table(config)
     except ValueError as e:
         assert 'E05000' in str(e)
         return
@@ -233,7 +233,7 @@ def test_invalid_config_5():
     config = deepcopy(_CONFIG)
     config['schema']['id']['unique'] = True
     try:
-        t = raw_table(config)
+        raw_table(config)
     except ValueError as e:
         assert 'E05000' in str(e)
         return
@@ -246,7 +246,7 @@ def test_invalid_config_6():
     config = deepcopy(_CONFIG)
     config['ptr_map']['id'] = 'left'
     try:
-        t = raw_table(config)
+        raw_table(config)
     except ValueError as e:
         assert 'E05000' in str(e)
         return
@@ -259,7 +259,7 @@ def test_invalid_config_7():
     config = deepcopy(_CONFIG)
     config['ptr_map']['left'] = 'invalid'
     try:
-        t = raw_table(config)
+        raw_table(config)
     except ValueError as e:
         assert 'E05000' in str(e)
         return
@@ -272,7 +272,7 @@ def test_invalid_config_8():
     config = deepcopy(_CONFIG)
     config['ptr_map']['invalid'] = 'id'
     try:
-        t = raw_table(config)
+        raw_table(config)
     except ValueError as e:
         assert 'E05000' in str(e)
         return
@@ -286,7 +286,7 @@ def test_invalid_config_9():
     config['delete_db'] = True
     config['create_db'] = False
     try:
-        t = raw_table(config)
+        raw_table(config)
     except ValueError as e:
         assert 'E05000' in str(e)
         return
@@ -300,7 +300,7 @@ def test_invalid_config_10():
     config['delete_table'] = True
     config['create_table'] = False
     try:
-        t = raw_table(config)
+        raw_table(config)
     except ValueError as e:
         assert 'E05000' in str(e)
         return
