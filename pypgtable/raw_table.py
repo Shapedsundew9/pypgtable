@@ -34,6 +34,30 @@ register_token_code("E05004", "Existing database table {table} columns do not ma
 _INITIAL_DELAY = 0.125
 _BACKOFF_STEPS = 13
 _BACKOFF_FUZZ = True
+_TYPE_ALIGNMENTS = {
+    "BIGINT": 8,
+    "BIGSERIAL": 8,
+    "BOOL": 1,
+    "BOOLEAN": 1,
+    "CHAR": 1,
+    "CHARACTER": 1,
+    "DATE": 8,
+    "DOUBLE PRECISION": 8,
+    "INTEGER": 4,
+    "INT4": 4,
+    "INT": 4,
+    "INTERVAL": 8,
+    "REAL": 4,
+    "FLOAT4": 4,
+    "SMALLINT": 2,
+    "INT2": 2,
+    "SMALLSERIAL": 2,
+    "SERIAL2": 2,
+    "SERIAL": 4,
+    "SERIAL4": 4,
+    "TIME": 8,
+    "TIMESTAMP": 8
+}
 _TABLE_LEN_SQL = sql.SQL("SELECT COUNT(*) FROM {0}")
 _TABLE_EXISTS_SQL = sql.SQL(
     "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = {0})")
@@ -111,7 +135,7 @@ class raw_table():
         if not raw_table_config_validator.validate(self.config):
             for field, error in raw_table_config_validator.errors.items():
                 _logger.error(text_token({'E05000': {'error': field + ': ' + str(error)}}))
-            raise ValueError
+            raise ValueError("E05000: Raw table configuration validation FAILED. See error log for details.")
         self.config = raw_table_config_validator.sub_normalized(self.config)
 
     def _get_primary_key(self):
@@ -167,6 +191,29 @@ class raw_table():
             for sql_str in sql_str_iter:
                 _logger.debug(self._sql_to_string(sql_str))
         return db_transaction(self.config['database']['dbname'], self.config['database'], sql_str_iter, read, repeatable)
+
+    def arbitrary_sql(self, sql_str, read=True, repeatable=False):
+        """Exectue the arbitrary SQL string sql_str.
+
+        The string is passed raw to psycopg2 to execute.
+        On your head be it.
+
+        Args
+        ----
+        sql_str (str): SQL string to be executed.
+
+        Returns
+        -------
+        psycopg2.cursor
+        """
+        result = self._db_transaction((sql.SQL(sql_str),), read, repeatable)[0]
+        try:
+            retval = result.fetchall()
+        except ProgrammingError as e:
+            if "no results to fetch" in str(e):
+                return None
+            raise e
+        return retval
 
     def _sql_to_string(self, sql_str):
         """Wrap sql.SQL.as_string() to convert sql.SQL to a string (usually for logging)."""
@@ -276,6 +323,42 @@ class raw_table():
         """
         return self._db_transaction((_TABLE_EXISTS_SQL.format(sql.Literal(self.config['table'])), ))[0].fetchone()[0]
 
+    def _add_alignment(self, definition):
+        """Add the byte alignment of the column type to the column definition.
+
+        Alignment depends on the column type and is an integer number of bytes usually
+        1, 2, 4 or 8. A value of 0 is used to define a variable alignment field.
+        Args
+        ----
+        definition (dict): Column definition as defined by raw_table_column_config_format.json
+
+        Returns
+        -------
+        (dict): A column definition plus an 'alignment' field.
+        """
+        upper_type = definition['type'].upper()
+        array_idx = upper_type.find('[')
+        fixed_length = upper_type.find('[]') == -1
+        if array_idx != -1:
+            upper_type = upper_type[:array_idx]
+        definition['alignment'] = _TYPE_ALIGNMENTS.get(upper_type.strip(), 0) if fixed_length else 0
+        return definition
+
+    def _order_schema(self):
+        """Order table columns to minimise disk footprint.
+
+        A small performance/resource benefit can be gleaned from ordering the columns
+        of a table to reduce packing/alignment costs.
+        See https://stackoverflow.com/questions/12604744/does-the-order-of-columns-in-a-postgres-table-impact-performance
+
+        Returns
+        -------
+        (list(tuple(str, dict))): Tuples are (column name, definition) sorted in descending alignment
+        requirment i.e. largest to smallest, with variable l
+        """
+        definition_list = [(c, self._add_alignment(d)) for c, d in self.config['schema'].items()]
+        return sorted(definition_list, key=lambda x: str(x[1]['alignment']) + x[0], reverse=True)
+
     def _create_table(self):
         """Create the table if it does not exists and the user has privileges to do so.
 
@@ -289,7 +372,9 @@ class raw_table():
         (tuple(str)) Column names.
         """
         columns, self._columns = [], []
-        for column, definition in self.config['schema'].items():
+        definition_list = self._order_schema()
+        _logger.info("Table will be created with columns in the order logged below.")
+        for column, definition in definition_list:
             sql_str = " " + definition['type']
             if not definition['nullable']:
                 sql_str += " NOT NULL"
@@ -300,6 +385,7 @@ class raw_table():
             if 'default' in definition:
                 sql_str += " DEFAULT " + definition['default']
             self._columns.append(column)
+            _logger.info("Column: {}, SQL Definition: {}, Alignment: {}".format(column, sql_str, definition['alignment']))
             columns.append(sql.Identifier(column) + sql.SQL(sql_str))
 
         sql_str = _TABLE_CREATE_SQL.format(
@@ -414,13 +500,16 @@ class raw_table():
         return self._sql_queries_transaction(sql_str_list, repeatable)[0]
 
     def _format_dict(self, literals):
+        """Create a formatting dict of literals and column identifiers."""
+        dupes = [literal for literal in filter(lambda x: x in self._columns, literals.keys())]
+        if dupes:
+            raise ValueError("Literals cannot have keys that are the names of table columns:{}".format(dupes))
         format_dict = {k: sql.Identifier(k) for k in self._columns}
         format_dict.update({k: sql.Literal(v) for k, v in literals.items()})
         return format_dict
 
     # TODO: This could overflow an SQL statement size limit. In which case
     # should we use a COPY https://www.postgresql.org/docs/12/dml-insert.html
-
     def upsert(self, columns, values, update_str=None, literals={}, returning=tuple()):
         """Upsert values.
 

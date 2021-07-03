@@ -2,7 +2,7 @@
 
 
 from copy import deepcopy
-from cerberus import Validator, SchemaError
+from cerberus import Validator
 from json import load
 from os.path import dirname, join
 from .utils.base_validator import BaseValidator
@@ -36,7 +36,7 @@ class _raw_table_config_validator(BaseValidator):
         if not raw_table_column_config_validator.validate(value):
             for e in raw_table_column_config_validator._errors:
                 self._error(field, self.str_errors(e))
-        if value.get('null', False) and value.get('primary_key', False):
+        if value.get('nullable', False) and value.get('primary_key', False):
             self._error(field, 'A column cannot be both NULL and the PRIMARY KEY.')
         if value.get('unique', False) and value.get('primary_key', False):
             self._error(field, 'A column cannot be both UNIQUE and the PRIMARY KEY.')
@@ -45,47 +45,28 @@ class _raw_table_config_validator(BaseValidator):
         """Validate the overall schema. There can be only one primary key."""
         primary_key_count = sum((config.get('primary_key', False) for config in value.values()))
         if primary_key_count > 1:
-            self._error(field, "There are {} primary keys defined. There can only be 0 or 1.", primary_key_count)
+            self._error(field, "There are {} primary keys defined. There can only be 0 or 1.".format(primary_key_count))
 
     def _check_with_valid_ptr_map_config(self, field, value):
-        """Validate pointer map configurtation."""
+        """Validate pointer map configuration."""
         for k, v in value.items():
-            if v == k:
-                self._error(field, "Circular reference {} -> {}".format(k, v))
+            if v in value.keys():
+                self._error(field, "Circular reference {} -> {}".format(v, value[v]))
             if k not in self.document['schema'].keys():
                 self._error(field, "Key {} is not a field.".format(k))
             if v not in self.document['schema'].keys():
                 self._error(field, "Value {} is not a field.".format(v))
 
     def _check_with_valid_file_folder(self, field, value):
-        """Validate data file & format file folders exist if validate is set."""
-        if self.document.get('validate', False):
-            self._isdir(field, value)
-
-    def _check_with_valid_format_file(self, field, value):
-        """Validate the format file schema if validate is set."""
-        if self.document.get('validate', False):
-            abspath = join(self.document['format_file_folder'], value)
-            schema = self._isjsonfile(field, abspath)
-            if schema:
-                try:
-                    Validator(schema)
-                except SchemaError:
-                    self._error(field, "Format file has an invalid schema.")
+        """Validate data file folder exist if validate is set."""
+        self._isdir(field, value)
 
     def _check_with_valid_data_files(self, field, value):
         """Validate the data files if validate is set."""
-        if self.document.get('validate', False):
-            schema_path = join(self.document['format_file_folder'], self.document['format_file'])
-            with open(schema_path, "r") as schema_file:
-                validator = Validator(load(schema_file))
-
-            for filename in value:
-                abspath = join(self.document['data_file_folder'], filename)
-                for datum in self._isjsonfile(field, abspath):
-                    if not validator.validate(datum):
-                        for e in validator._errors:
-                            self._error(field, self.str_errors(e))
+        for filename in value:
+            abspath = join(self.document['data_file_folder'], filename)
+            if not self._isjsonfile(field, abspath):
+                self._error(field, "Data file {} empty or invalid.".format(abspath))
 
     def _check_with_valid_delete_db(self, field, value):
         """Validate delete_db."""
