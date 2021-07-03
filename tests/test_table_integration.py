@@ -4,6 +4,8 @@ from copy import deepcopy
 from os.path import join, dirname
 from pypgtable.table import table
 from pypgtable.utils.base_logging import get_logger
+from inspect import stack
+from pytest import approx
 
 
 _logger, _ = get_logger(__file__, __name__)
@@ -50,11 +52,8 @@ _CONFIG = {
         'left': 'id',
         'right': 'id'
     },
-    'format_file_folder': join(dirname(__file__), 'data'),
-    'format_file': 'data_format.json',
     'data_file_folder': join(dirname(__file__), 'data'),
     'data_files': ['data_values.json'],
-    'validate': True,
     'delete_db': False,
     'delete_table': True,
     'create_db': True,
@@ -72,6 +71,7 @@ def _register_conversions(table):
 
 def test_create_table():
     """Validate a the SQL sequence when a table exists."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
     assert t is not None
@@ -79,6 +79,7 @@ def test_create_table():
 
 def test_getitem_encoded_pk1():
     """Validate a valid getitem for an encoded primary key."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = _register_conversions(table(config))
     expected = {"id": 1000, "left": 1, "right": 2,
@@ -89,6 +90,7 @@ def test_getitem_encoded_pk1():
 
 def test_getitem_encoded_pk2():
     """Validate an invalid getitem for an encoded primary key."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = _register_conversions(table(config))
     assert t[0] == {}
@@ -96,6 +98,7 @@ def test_getitem_encoded_pk2():
 
 def test_getitem_pk1():
     """Validate a valid getitem."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
     expected = {"id": 0, "left": 1, "right": 2,
@@ -106,6 +109,7 @@ def test_getitem_pk1():
 
 def test_getitem_pk2():
     """Validate an invalid getitem."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
     assert t[1000] == {}
@@ -113,6 +117,7 @@ def test_getitem_pk2():
 
 def test_getitem_no_pk():
     """Validate if the table has no primary key we get the correct ValueError."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     config['schema']['id']['primary_key'] = False
     t = table(config)
@@ -126,6 +131,7 @@ def test_getitem_no_pk():
 
 def test_setitem_encoded_pk():
     """Validate a valid setitem for an encoded primary key."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = _register_conversions(table(config))
     setitem = {"id": 22, "left": 9, "right": 12,
@@ -144,6 +150,7 @@ def test_setitem_encoded_pk():
 
 def test_setitem_pk():
     """Validate a valid setitem."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
     setitem = {"id": 22, "left": 9, "right": 12,
@@ -161,6 +168,7 @@ def test_setitem_pk():
 
 def test_setitem_mismatch_pk():
     """When setting an item and specifying the primary key in the value the setitem key takes precedence."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
     setitem = {"id": 22, "left": 9, "right": 12,
@@ -179,6 +187,7 @@ def test_setitem_mismatch_pk():
 
 def test_select_dict():
     """Validate select returning a dict."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
     data = t.select('WHERE {id} = {seven}', {'seven': 7},
@@ -188,6 +197,7 @@ def test_select_dict():
 
 def test_select_list():
     """Validate select returning a list."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
     data = t.select('WHERE {id} = {seven}', {'seven': 7}, columns=(
@@ -197,6 +207,7 @@ def test_select_list():
 
 def test_select_tuple():
     """Validate select returning a list."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
     data = t.select('WHERE {id} = {seven}', {'seven': 7}, columns=(
@@ -206,6 +217,7 @@ def test_select_tuple():
 
 def test_recursive_select():
     """Validate a recursive select returning a tuple."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
     data = t.recursive_select('WHERE {id} = 2', columns=(
@@ -216,7 +228,7 @@ def test_recursive_select():
 
 def test_upsert():
     """Validate an upsert consisting or 1 insert & 1 update returing updated fields as tuples."""
-    _logger.debug('')
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
     data = (
@@ -234,6 +246,7 @@ def test_upsert():
 
 def test_insert():
     """Validate inserting two rows from a dict."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
     columns = ("id", "left", "right", "uid", "metadata", "name")
@@ -250,6 +263,7 @@ def test_insert():
 
 def test_update():
     """Validate an update returning a dict."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
     returning = t.update('{name}={name} || {new}', '{id}={qid}', {
@@ -262,6 +276,7 @@ def test_update():
 
 def test_delete():
     """Validate a delete returning a list."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
     returning = t.delete('{id}={target}', {'target': 7},
@@ -279,6 +294,7 @@ def test_discover_table():
     Instanciate a table rt2 with no schema from the same DB & table name as rt1.
     rt1 and rt2 should point at the same table.
     """
+    _logger.debug(stack()[0][3])
     config1 = deepcopy(_CONFIG)
     config1['data_files'] = []
     t1 = table(config1)
@@ -297,3 +313,12 @@ def test_discover_table():
     t2.insert([values_dict[-1]])
     data = t1.select(columns=values_dict[0].keys())
     assert data == values_dict
+
+
+def test_arbitrary_sql():
+    """Execute some arbitrary SQL."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    t = table(config)
+    result = t.arbitrary_sql('SELECT 2.0::REAL * 3.0::REAL')[0][0]
+    assert result == approx(6.0)

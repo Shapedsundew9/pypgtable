@@ -43,16 +43,6 @@
             "description": "Defines relationships between fields for tables consisting of graph node rows."
         }
     },
-    "format_file_folder": {
-        "type": "string",
-        "minlength": 1,
-        "maxlength": 1024,
-        "check_with": "valid_file_folder",
-        "default": ".",
-        "meta": {
-            "description": "Folder to find the table schema validation schema."
-        }
-    },
     "data_file_folder": {
         "type": "string",
         "minlength": 1,
@@ -61,16 +51,6 @@
         "default": ".",
         "meta": {
             "description": "Folder to find the data to populate the table on creation."
-        }
-    },
-    "format_file": {
-        "type": "string",
-        "minlength": 1,
-        "maxlength": 1024,
-        "check_with": "valid_format_file",
-        "dependencies": ["format_file_folder"],
-        "meta": {
-            "description": "Python Cerberus validation schema for the table data."
         }
     },
     "data_files": {
@@ -82,16 +62,9 @@
             "required": false
         },
         "check_with": "valid_data_files",
-        "dependencies": ["data_file_folder", "format_file"],
+        "dependencies": ["data_file_folder"],
         "meta": {
             "description": "Data files used to populate the table on creation."
-        }
-    },
-    "validate": {
-        "type": "boolean",
-        "default": false,
-        "meta": {
-            "description": "Validate format file folder, format file, data files folder & datafiles. Increases start up time."
         }
     },
     "delete_db": {

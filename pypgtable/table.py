@@ -84,13 +84,16 @@ class table():
 
     def decode_values_to_dict(self, columns, values):
         """Create a list of dicts with columns keys and decoded values from values.
+
         The order of the dicts in the returned list is the same as the rows of values in values.
         Each value is decoded by the registered conversion function (see register_conversion()) or
         unchanged if no conversion has been registered.
+
         Args
         ----
         columns (iter(str)): Column names for each of the rows in values.
         values  (iter(tuple/list)): Iterable of rows (ordered iterables) with values in the order as columns.
+
         Returns
         -------
         list(dict)
@@ -100,7 +103,6 @@ class table():
     def decode_values_to_pkdict(self, columns, values):
         """Create a dict of dicts with the primary key as the key and columns keys and decoded values as each dict.
 
-        The order of the dicts in the returned list is the same as the rows of values in values.
         Each value is decoded by the registered conversion function (see register_conversion()) or
         unchanged if no conversion has been registered.
 
@@ -361,3 +363,21 @@ class table():
             _returning.append(self.raw._primary_key)
         retval = self.raw.delete(query_str, literals, returning)
         return self._return_container(_returning, retval, container)
+
+    def arbitrary_sql(self, sql_str, read=True, repeatable=False):
+        """Exectue the arbitrary SQL string sql_str.
+
+        The string is passed raw to psycopg2 to execute.
+        On your head be it.
+
+        Args
+        ----
+        sql_str (str): SQL string to be executed.
+        read (bool): True if the SQL does not make changes to the database.
+        repeatable (bool): If True select transaction is done with repeatable read isolation.
+
+        Returns
+        -------
+        psycopg2.cursor
+        """
+        return self.raw.arbitrary_sql(sql_str, read, repeatable)

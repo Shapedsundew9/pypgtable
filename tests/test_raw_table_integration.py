@@ -5,6 +5,8 @@ from copy import deepcopy
 from os.path import join, dirname
 from pypgtable.raw_table import raw_table
 from pypgtable.utils.base_logging import get_logger
+from inspect import stack
+from pytest import approx
 
 
 _logger, _ = get_logger(__file__, __name__)
@@ -51,11 +53,8 @@ _CONFIG = {
         'left': 'id',
         'right': 'id'
     },
-    'format_file_folder': join(dirname(__file__), 'data'),
-    'format_file': 'data_format.json',
     'data_file_folder': join(dirname(__file__), 'data'),
     'data_files': ['data_values.json'],
-    'validate': True,
     'delete_db': False,
     'delete_table': True,
     'create_db': True,
@@ -67,6 +66,7 @@ _CONFIG = {
 
 def test_create_table():
     """Validate a the SQL sequence when a table exists."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
     assert rt is not None
@@ -74,6 +74,7 @@ def test_create_table():
 
 def test_select():
     """As it says on the tin."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
     data = rt.select('WHERE {id} = {seven}', {'seven': 7}, columns=('uid', 'left', 'right'))
@@ -82,6 +83,7 @@ def test_select():
 
 def test_recursive_select():
     """As it says on the tin."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
     data = rt.recursive_select('WHERE {id} = 2', columns=('id', 'uid', 'left', 'right'))
@@ -91,6 +93,7 @@ def test_recursive_select():
 
 def test_insert():
     """As it says on the tin."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
     columns = ("id", "left", "right", "uid", "metadata", "name")
@@ -102,6 +105,7 @@ def test_insert():
 
 def test_upsert():
     """As it says on the tin."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
     columns = ("id", "left", "right", "uid", "metadata", "name")
@@ -114,6 +118,7 @@ def test_upsert():
 
 def test_update():
     """As it says on the tin."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
     returning = rt.update('{name}={name} || {new}', '{id}={qid}', {'qid': 0, 'new': '_new'}, ('id', 'name'))
@@ -124,6 +129,7 @@ def test_update():
 
 def test_delete():
     """As it says on the tin."""
+    _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
     returning = rt.delete('{id}={target}', {'target': 7}, ('uid', 'id'))
@@ -134,6 +140,7 @@ def test_delete():
 
 def test_duplicate_table():
     """Validate a the SQL sequence when a table exists."""
+    _logger.debug(stack()[0][3])
     config1 = deepcopy(_CONFIG)
     config2 = deepcopy(_CONFIG)
     config2['delete_table'] = False
@@ -152,6 +159,7 @@ def test_discover_table():
     Instanciate a table rt2 with no schema from the same DB & table name as rt1.
     rt1 and rt2 should point at the same table.
     """
+    _logger.debug(stack()[0][3])
     config1 = deepcopy(_CONFIG)
     config1['data_files'] = []
     rt1 = raw_table(config1)
@@ -165,3 +173,144 @@ def test_discover_table():
     rt2.insert(columns, [values[-1]])
     data = rt1.select(columns=columns)
     assert data == values
+
+
+def test_invalid_config_1():
+    """Invalid database configuration."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    config['database']['port'] = 100
+    try:
+        t = raw_table(config)
+    except ValueError as e:
+        assert 'E05000' in str(e)
+        return
+    assert False
+
+
+def test_invalid_config_2():
+    """General invalid schema column configuration."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    del config['schema']['name']['type']
+    try:
+        t = raw_table(config)
+    except ValueError as e:
+        assert 'E05000' in str(e)
+        return
+    assert False
+
+
+def test_invalid_config_3():
+    """Invalid schema column configuration: NULL & PRIMARY KEY."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    config['schema']['id']['nullable'] = True
+    try:
+        t = raw_table(config)
+    except ValueError as e:
+        assert 'E05000' in str(e)
+        return
+    assert False
+
+
+def test_invalid_config_4():
+    """Invalid schema column configuration: Multiple primary keys."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    config['schema']['name']['primary_key'] = True
+    try:
+        t = raw_table(config)
+    except ValueError as e:
+        assert 'E05000' in str(e)
+        return
+    assert False
+
+
+def test_invalid_config_5():
+    """Invalid schema column configuration: UNIQUE & PRIMARY KEY."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    config['schema']['id']['unique'] = True
+    try:
+        t = raw_table(config)
+    except ValueError as e:
+        assert 'E05000' in str(e)
+        return
+    assert False
+
+
+def test_invalid_config_6():
+    """Invalid schema column configuration: Ptr map circular reference."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    config['ptr_map']['id'] = 'left'
+    try:
+        t = raw_table(config)
+    except ValueError as e:
+        assert 'E05000' in str(e)
+        return
+    assert False
+
+
+def test_invalid_config_7():
+    """Invalid schema column configuration: Ptr map value is not a column."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    config['ptr_map']['left'] = 'invalid'
+    try:
+        t = raw_table(config)
+    except ValueError as e:
+        assert 'E05000' in str(e)
+        return
+    assert False
+
+
+def test_invalid_config_8():
+    """Invalid schema column configuration: Ptr map key is not a column."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    config['ptr_map']['invalid'] = 'id'
+    try:
+        t = raw_table(config)
+    except ValueError as e:
+        assert 'E05000' in str(e)
+        return
+    assert False
+
+
+def test_invalid_config_9():
+    """Invalid schema column configuration: DB delete requires DB create."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    config['delete_db'] = True
+    config['create_db'] = False
+    try:
+        t = raw_table(config)
+    except ValueError as e:
+        assert 'E05000' in str(e)
+        return
+    assert False
+
+
+def test_invalid_config_10():
+    """Invalid schema column configuration: Table delete requires table create."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    config['delete_table'] = True
+    config['create_table'] = False
+    try:
+        t = raw_table(config)
+    except ValueError as e:
+        assert 'E05000' in str(e)
+        return
+    assert False
+
+
+def test_arbitrary_sql():
+    """Execute some arbitrary SQL."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    t = raw_table(config)
+    result = t.arbitrary_sql('SELECT 2.0::REAL * 3.0::REAL')[0][0]
+    assert result == approx(6.0)
