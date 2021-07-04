@@ -4,12 +4,13 @@
 from copy import deepcopy
 from os.path import join, dirname
 from pypgtable.raw_table import raw_table
-from pypgtable.utils.base_logging import get_logger
 from inspect import stack
 from pytest import approx
+from logging import getLogger, NullHandler
 
 
-_logger, _ = get_logger(__file__, __name__)
+_logger = getLogger(__name__)
+_logger.addHandler(NullHandler())
 
 
 _CONFIG = {
@@ -135,6 +136,41 @@ def test_delete():
     returning = rt.delete('{id}={target}', {'target': 7}, ('uid', 'id'))
     row = rt.select('WHERE {id} = 7', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
     assert returning == [(107, 7)]
+    assert row == []
+
+
+def test_upsert_returning_all():
+    """As it says on the tin."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    rt = raw_table(config)
+    columns = ("id", "left", "right", "uid", "metadata", "name")
+    values = ((91, 3, 4, 901, [1, 2], "Harry"), (0, 1, 2, 201, [], "Diana"))
+    returning = rt.upsert(columns, values, '{name}={EXCLUDED.name} || {temp}', {'temp': '_temp'}, '*')
+    row = rt.select('WHERE {id} = 0', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
+    assert len(returning[0]) == 7 and len(returning[1]) == 7
+    assert row == [(0, 1, 2, 100, None, "Diana_temp")]
+
+
+def test_update_returning_all():
+    """As it says on the tin."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    rt = raw_table(config)
+    returning = rt.update('{name}={name} || {new}', '{id}={qid}', {'qid': 0, 'new': '_new'}, '*')
+    row = rt.select('WHERE {id} = 0', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
+    assert len(returning[0]) == 7
+    assert row == [(0, 1, 2, 100, None, "root_new")]
+
+
+def test_delete_returning_all():
+    """As it says on the tin."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    rt = raw_table(config)
+    returning = rt.delete('{id}={target}', {'target': 7}, '*')
+    row = rt.select('WHERE {id} = 7', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
+    assert len(returning[0]) == 7
     assert row == []
 
 
@@ -307,10 +343,126 @@ def test_invalid_config_10():
     assert False
 
 
-def test_arbitrary_sql():
+def test_invalid_config_11():
+    """Invalid schema column configuration: DB delete requires table create or wait_for_table."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    config['delete_db'] = True
+    config['create_table'] = False
+    try:
+        raw_table(config)
+    except ValueError as e:
+        assert 'E05000' in str(e)
+        return
+    assert False
+
+
+def test_invalid_config_12():
+    """Invalid schema column configuration: Create DB requires wait_for_db == False."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    config['create_db'] = True
+    config['wait_for_db'] = True
+    try:
+        raw_table(config)
+    except ValueError as e:
+        assert 'E05000' in str(e)
+        return
+    assert False
+
+
+def test_invalid_config_13():
+    """Invalid schema column configuration: Create table requires wait_for_table == False."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    config['create_table'] = True
+    config['wait_for_table'] = True
+    try:
+        raw_table(config)
+    except ValueError as e:
+        assert 'E05000' in str(e)
+        return
+    assert False
+
+
+def test_invalid_config_14():
+    """Invalid schema column configuration: Wait for DB requires create_db & delete_db to be False."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    config['delete_db'] = True
+    config['wait_for_db'] = True
+    try:
+        raw_table(config)
+    except ValueError as e:
+        assert 'E05000' in str(e)
+        return
+    assert False
+
+
+def test_invalid_config_15():
+    """Invalid schema column configuration: Wait for DB requires create_table or wait_for_table to be True."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    config['create_table'] = False
+    config['wait_for_table'] = False
+    config['wait_for_db'] = True
+    try:
+        raw_table(config)
+    except ValueError as e:
+        assert 'E05000' in str(e)
+        return
+    assert False
+
+
+def test_invalid_config_16():
+    """Invalid schema column configuration: Wait for table requires create_table and delete_table to be False."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    config['create_table'] = True
+    config['wait_for_table'] = True
+    try:
+        raw_table(config)
+    except ValueError as e:
+        assert 'E05000' in str(e)
+        return
+    assert False
+
+
+def test_invalid_config_17():
+    """Invalid schema column configuration: Wait for table requires create_table and delete_table to be False."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    config['data_files'] = ['invalid']
+    try:
+        raw_table(config)
+    except ValueError as e:
+        assert 'E05000' in str(e)
+        return
+    assert False
+
+
+def test_delete_create_db():
+    """Delete the DB & re-create it."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    config['delete_db'] = True
+    config['create_db'] = True
+    raw_table(config)
+
+
+def test_arbitrary_sql_return():
     """Execute some arbitrary SQL."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = raw_table(config)
     result = t.arbitrary_sql('SELECT 2.0::REAL * 3.0::REAL')[0][0]
     assert result == approx(6.0)
+
+
+def test_arbitrary_sql_no_return():
+    """Execute some arbitrary SQL that returns no result."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    t = raw_table(config)
+    result = t.arbitrary_sql('INSERT INTO "test_table" ("id","metadata","right","uid") VALUES (6,ARRAY[1],12,106) ON CONFLICT DO NOTHING')
+    assert result is None

@@ -8,10 +8,11 @@ from pypgtable.utils.reference import sequential_reference
 from pypgtable.database import _connect_core, db_reconnect, db_connect, db_disconnect, db_transaction
 from pypgtable.database import db_disconnect_all, _DB_TRANSACTION_ATTEMPTS, db_exists, db_create, db_delete
 from pypgtable.common import backoff_generator
-from pypgtable.utils.base_logging import get_logger
+from logging import getLogger, NullHandler
 
 
-_logger = get_logger(__file__, __name__)
+_logger = getLogger(__name__)
+_logger.addHandler(NullHandler())
 
 
 _MOCK_CONFIG = {

@@ -1,10 +1,10 @@
-"""Common routines."""
+"""Common routines for Erasmus GP"""
 
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from random import choice, getrandbits
 
-
-EGP_EPOCH = datetime(1975, 8, 7)
+EST = timezone(timedelta(hours=-5))
+EGP_EPOCH = datetime(2019, 12, 25, 16, 26, tzinfo=EST)
 EGP_EMPTY_TUPLE = tuple()
 _SIGN = (1, -1)
 

@@ -70,13 +70,40 @@ class _raw_table_config_validator(BaseValidator):
 
     def _check_with_valid_delete_db(self, field, value):
         """Validate delete_db."""
-        if value and not self.document.get('create_db', False):
-            self._error(field, "delete_db == True requires create_db == True")
+        if value and (not self.document.get('create_db', False) or self.document.get('wait_for_db', False)):
+            self._error(field, "delete_db == True requires create_db == True and wait_for_db == False")
+        if value and not(self.document.get('create_table', False) or self.document.get('wait_for_table', False)):
+            self._error(field, "delete_db == True requires either create_table == True or wait_for_table == True")
 
     def _check_with_valid_delete_table(self, field, value):
         """Validate delete_table."""
-        if value and not self.document.get('create_table', False):
-            self._error(field, "delete_table == True requires create_table == True")
+        if value and (not self.document.get('create_table', False) or self.document.get('wait_for_table', False)):
+            self._error(field, "delete_table == True requires create_table == True and wait_for_table == False")
+
+    def _check_with_valid_create_db(self, field, value):
+        """Validate create_db."""
+        if value and self.document.get('wait_for_db', False):
+            self._error(field, "create_db == True requires wait_for_db == False")
+        if value and not(self.document.get('create_table', False) or self.document.get('wait_for_table', False)):
+            self._error(field, "create_db == True requires either create_table == True or wait_for_table == True")
+
+    def _check_with_valid_create_table(self, field, value):
+        """Validate create_table."""
+        if value and self.document.get('wait_for_table', False):
+            self._error(field, "create_table == True requires wait_for_table == False")
+
+    def _check_with_valid_wait_for_db(self, field, value):
+        """Validate wait_for_db."""
+        if value and (self.document.get('delete_db', False) or self.document.get('create_db', False)):
+            self._error(field, "wait_for_db == True requires delete_db == False and create_db == False")
+        if value and not(self.document.get('create_table', False) or self.document.get('wait_for_table', False)):
+            self._error(field, "wait_for_db == True requires either create_table == True or wait_for_table == True")
+
+    def _check_with_valid_wait_for_table(self, field, value):
+        """Validate wait_for_table."""
+        if value and (self.document.get('delete_table', False) or self.document.get('create_table', False)):
+            self._error(field, "wait_for_table == True requires delete_table == False and create_table == False")
+
 
 
 with open(join(dirname(__file__), "formats/raw_table_config_format.json"), "r") as file_ptr:

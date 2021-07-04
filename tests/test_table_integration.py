@@ -3,12 +3,13 @@
 from copy import deepcopy
 from os.path import join, dirname
 from pypgtable.table import table
-from pypgtable.utils.base_logging import get_logger
 from inspect import stack
 from pytest import approx
+from logging import getLogger, NullHandler
 
 
-_logger, _ = get_logger(__file__, __name__)
+_logger = getLogger(__name__)
+_logger.addHandler(NullHandler())
 
 
 _CONFIG = {

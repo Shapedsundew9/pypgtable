@@ -2,11 +2,12 @@
 
 
 from copy import deepcopy
-from logging import getLogger
+from logging import getLogger, NullHandler
 from .raw_table import raw_table
 
 
-_logger = getLogger('pypgtable')
+_logger = getLogger(__name__)
+_logger.addHandler(NullHandler())
 
 
 def _ID_FUNC(x):
@@ -364,15 +365,17 @@ class table():
         retval = self.raw.delete(query_str, literals, returning)
         return self._return_container(_returning, retval, container)
 
-    def arbitrary_sql(self, sql_str, read=True, repeatable=False):
+    def arbitrary_sql(self, sql_str, literals={}, read=True, repeatable=False):
         """Exectue the arbitrary SQL string sql_str.
 
-        The string is passed raw to psycopg2 to execute.
+        The string is passed to psycopg2 to execute.
+        Column names and literals will be formatted (see select() as an example)
         On your head be it.
 
         Args
         ----
         sql_str (str): SQL string to be executed.
+        literals (dict): Keys are labels used in sql_str. Values are literals to replace the labels.
         read (bool): True if the SQL does not make changes to the database.
         repeatable (bool): If True select transaction is done with repeatable read isolation.
 
@@ -380,4 +383,4 @@ class table():
         -------
         psycopg2.cursor
         """
-        return self.raw.arbitrary_sql(sql_str, read, repeatable)
+        return self.raw.arbitrary_sql(sql_str, literals, read, repeatable)
