@@ -10,7 +10,7 @@ of a single threaded process.
 
 
 from copy import deepcopy
-from logging import getLogger
+from logging import getLogger, NullHandler
 from time import sleep
 from psycopg2 import sql, connect, InterfaceError, OperationalError, ProgrammingError, errors
 from psycopg2.extensions import ISOLATION_LEVEL_REPEATABLE_READ, ISOLATION_LEVEL_DEFAULT
@@ -19,7 +19,8 @@ from .utils.text_token import register_token_code, text_token
 
 
 _connections = {}
-_logger = getLogger('pypgtable')
+_logger = getLogger(__name__)
+_logger.addHandler(NullHandler())
 
 
 register_token_code(

@@ -1,6 +1,6 @@
 """Simplified database table access."""
 
-from logging import getLogger, DEBUG
+from logging import getLogger, DEBUG, NullHandler
 from copy import deepcopy
 from os.path import join
 from json import load
@@ -12,15 +12,16 @@ from .validators import raw_table_config_validator, raw_table_column_config_vali
 from .utils.text_token import text_token, register_token_code
 
 
-_logger = getLogger('pypgtable')
+_logger = getLogger(__name__)
+_logger.addHandler(NullHandler())
 def _logit(): return _logger.getEffectiveLevel() == DEBUG
 
 
 register_token_code("I05000", "SQL: {sql}")
 register_token_code("I05001", "Table {table} cannot be created as it already exists in database {dbname}.")
-register_token_code("I05002", "User {user} does not have privileges to create a table in database {dbname}.")
 register_token_code("I05003", "Table {table} in database {dbname} does not yet exist. Waiting {backoff:.2}s to retry.")
 register_token_code("I05004", "Adding data to table {table} from {file}.")
+register_token_code("I05005", "Database {dbname} does not yet exist. Waiting {backoff:.2}s to retry.")
 register_token_code("E05000", "Configuration error: {error}")
 register_token_code("E05001", "{set} columns differ between DB {dbname} and table {table} configuration.")
 register_token_code("E05002", "Existing database table {table} columns do not match configuration. Column {column} "
@@ -114,17 +115,15 @@ class raw_table():
         self._columns = None
         self._pm, self._pm_columns, self._pm_sql = self._ptr_map_def()
         self._primary_key = self._get_primary_key()
+        self._db = None
         if self.config['delete_db']:
             self.delete_db()
-        if not (dbexists := self._db_exists()) and not self.config['create_db'] and not self.config['wait_for_db']:
-            raise RuntimeError("DB does not exist, create_db is False and wait_for_db is False.")
-        if not dbexists and self.config['create_db']:
+        if not self._db_exists() and self.config['create_db']:
             self._create_db()
         if self.config['delete_table']:
             self.delete_table()
-        if not (tableexists := self._table_exists()) and not self.config['create_table'] and not self.config['wait_for_table']:
-            raise RuntimeError("Table does not exist, create_table is False and wait_for_table is False.")
-        self._columns = self._create_table() if not tableexists and self.config['create_table'] else self._table_definition()
+        create_table = not self._table_exists() and self.config['create_table']
+        self._columns = self._create_table() if create_table else self._table_definition()
 
     def __len__(self):
         """Return the number of entries in the table."""
@@ -133,9 +132,12 @@ class raw_table():
     def _validate_config(self):
         """Validate the table configuration."""
         if not raw_table_config_validator.validate(self.config):
+            error_str = '\n'
             for field, error in raw_table_config_validator.errors.items():
-                _logger.error(text_token({'E05000': {'error': field + ': ' + str(error)}}))
-            raise ValueError("E05000: Raw table configuration validation FAILED. See error log for details.")
+                tt = text_token({'E05000': {'error': field + ': ' + str(error)}})
+                _logger.error(tt)
+                error_str += str(tt) + '\n'
+            raise ValueError(error_str)
         self.config = raw_table_config_validator.sub_normalized(self.config)
 
     def _get_primary_key(self):
@@ -176,14 +178,18 @@ class raw_table():
         return self.config['ptr_map'], pm_columns, pm_sql
 
     def _db_exists(self):
-        return db_exists(self.config['database']['dbname'], self.config['database'])
+        if self._db is not None: return self._db
+        self._db = db_exists(self.config['database']['dbname'], self.config['database'])
+        return self._db
 
     def _create_db(self):
-        return db_create(self.config['database']['dbname'], self.config['database'])
+        db_create(self.config['database']['dbname'], self.config['database'])
+        self._db = True
 
     def delete_db(self):
         """Delete the database."""
-        return db_delete(self.config['database']['dbname'], self.config['database'])
+        db_delete(self.config['database']['dbname'], self.config['database'])
+        self._db = False
 
     def _db_transaction(self, sql_str_iter, read=True, repeatable=False):
         """Wrap db_transaction."""
@@ -192,21 +198,27 @@ class raw_table():
                 _logger.debug(self._sql_to_string(sql_str))
         return db_transaction(self.config['database']['dbname'], self.config['database'], sql_str_iter, read, repeatable)
 
-    def arbitrary_sql(self, sql_str, read=True, repeatable=False):
+    def arbitrary_sql(self, sql_str, literals={}, read=True, repeatable=False):
         """Exectue the arbitrary SQL string sql_str.
 
-        The string is passed raw to psycopg2 to execute.
+        The string is passed to psycopg2 to execute.
+        Column names and literals will be formatted (see select() as an example)
         On your head be it.
 
         Args
         ----
         sql_str (str): SQL string to be executed.
+        literals (dict): Keys are labels used in sql_str. Values are literals to replace the labels.
+        read (bool): True if the SQL does not make changes to the database.
+        repeatable (bool): If True select transaction is done with repeatable read isolation.
 
         Returns
         -------
-        psycopg2.cursor
+        list(tuple) or None: SQL expression results
         """
-        result = self._db_transaction((sql.SQL(sql_str),), read, repeatable)[0]
+        format_dict = self._format_dict(literals)
+        sql_str = sql.SQL(sql_str).format(**format_dict)
+        result = self._db_transaction((sql_str,), read, repeatable)[0]
         try:
             retval = result.fetchall()
         except ProgrammingError as e:
@@ -218,11 +230,6 @@ class raw_table():
     def _sql_to_string(self, sql_str):
         """Wrap sql.SQL.as_string() to convert sql.SQL to a string (usually for logging)."""
         return sql_str.as_string(db_connect(self.config['database']['dbname'], self.config['database']))
-
-    def _check_permissions(self):
-        """Check the user has necessary permissions."""
-        # TODO: One day.
-        pass
 
     def _populate_table(self):
         """Add data to table after creation.
@@ -284,12 +291,11 @@ class raw_table():
         -------
         (tuple(str)): Column names.
         """
-        backoff_gen = backoff_generator(
-            _INITIAL_DELAY, _BACKOFF_STEPS, _BACKOFF_FUZZ)
-        while not self._table_exists():
+        backoff_gen = backoff_generator(_INITIAL_DELAY, _BACKOFF_STEPS, _BACKOFF_FUZZ)
+        while not self._table_exists() and self.config['wait_for_table']:
             backoff = next(backoff_gen)
-            _logger.info(text_token({'I05003': {'table': self.config['table'],
-                                                'dbname': self.config['database']['dbname'], 'backoff': backoff}}))
+            dbname = self.config['database']['dbname']
+            _logger.info(text_token({'I05003': {'table': self.config['table'], 'dbname': dbname, 'backoff': backoff}}))
             sleep(backoff)
         results = self._db_transaction((_TABLE_DEFINITION_SQL.format(sql.Literal(self.config['table'])),))[0].fetchall()
         columns = tuple((column[0] for column in results))
@@ -321,6 +327,11 @@ class raw_table():
         -------
         (bool) True if the table exists else False.
         """
+        backoff_gen = backoff_generator(_INITIAL_DELAY, _BACKOFF_STEPS, _BACKOFF_FUZZ)
+        while not self._db_exists() and self.config['wait_for_db']:
+            backoff = next(backoff_gen)
+            _logger.info(text_token({'I05005': {'dbname': self.config['database']['dbname'], 'backoff': backoff}}))
+            sleep(backoff)
         return self._db_transaction((_TABLE_EXISTS_SQL.format(sql.Literal(self.config['table'])), ))[0].fetchone()[0]
 
     def _add_alignment(self, definition):
@@ -395,13 +406,8 @@ class raw_table():
         try:
             self._db_transaction((sql_str,), read=False)
         except ProgrammingError as e:
-            if e.pgcode == errors.DuplicateTable or e.pgcode == errors.InsufficientPrivilege:
-                if e.pgcode == errors.DuplicateTable:
-                    _logger.info(text_token({'I05001': {
-                                 'table': self.config['table'], 'dbname': self.config['database']}}))
-                if e.pgcode == errors.InsufficientPrivilege:
-                    _logger.info(text_token({'I05002': {
-                                 'user': self.config['database']['user'], 'dbname': self.config['database']}}))
+            if e.pgcode == errors.DuplicateTable:
+                _logger.info(text_token({'I05001': {'table': self.config['table'], 'dbname': self.config['database']}}))
                 return self._table_definition()
             raise e
 
@@ -420,9 +426,10 @@ class raw_table():
 
     def delete_table(self):
         """Delete the table."""
-        sql_str = _TABLE_DELETE_TABLE_SQL.format(self._table)
-        _logger.info(text_token({'I05000': {'sql': self._sql_to_string(sql_str)}}))
-        self._db_transaction((sql_str,), read=False)
+        if self._db_exists():
+            sql_str = _TABLE_DELETE_TABLE_SQL.format(self._table)
+            _logger.info(text_token({'I05000': {'sql': self._sql_to_string(sql_str)}}))
+            self._db_transaction((sql_str,), read=False)
 
     def _sql_queries_transaction(self, sql_str_list, repeatable=False):
         if _logit():
@@ -453,7 +460,7 @@ class raw_table():
             columns = self._columns
         format_dict = self._format_dict(literals)
         if isinstance(columns, str):
-            columns = sql.SQL(query_str).format(**format_dict)
+            columns = sql.SQL(columns).format(**format_dict)
         else:
             columns = sql.SQL(', ').join(map(sql.Identifier, columns))
         sql_str_list = [_TABLE_SELECT_SQL.format(columns, self._table, sql.SQL(query_str).format(**format_dict))]
