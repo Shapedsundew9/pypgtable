@@ -3,8 +3,6 @@
 This module is used to map tokens to user text.
 """
 
-
-from copy import deepcopy
 from logging import getLogger
 
 
@@ -26,7 +24,7 @@ When a token with a code in the token_library is converted to a string
 The fmt_str is looked up and formatted with the token parameters.
 """
 token_library = {
-    'E00000': 'Unknown error code {token} with parameters {parameters}.' 
+    'E00000': 'Unknown error code {token} with parameters {parameters}.'
 }
 
 
@@ -41,11 +39,15 @@ def _valid_code(code):
     -------
         (bool): True if the code is valid else False
     """
-    if not code[0] in _CODE_PREFIXES: return False
-    if len(code) != 6: return False
+    if not code[0] in _CODE_PREFIXES:
+        return False
+    if len(code) != 6:
+        return False
     code_num = int(code[1:])
-    if code_num < 0 or code_num > 99999: return False
-    if code_num in token_library: return False
+    if code_num < 0 or code_num > 99999:
+        return False
+    if code_num in token_library:
+        return False
     return True
 
 
@@ -81,17 +83,17 @@ class text_token():
 
     _logger = getLogger(__name__)
 
-
     def __init__(self, token):
         self.code = tuple(token.keys())[0]
         self.parameters = token[self.code]
 
-
     def __str__(self):
         """Convert the token to a human readbale string.
-        
+
         This can be recursive if a parameter is of type text_token.
         """
-        if self.code not in token_library: return token_library['E00000'].format(vars(self))
-        # text_token._logger.debug("Code {}: Parameters: {} Library string: {}".format(self.code, self.parameters, token_library[self.code]))
+        if self.code not in token_library:
+            return token_library['E00000'].format(vars(self))
+        # text_token._logger.debug("Code {}: Parameters: {} Library string: {}".format(
+        #   self.code, self.parameters, token_library[self.code]))
         return self.code + ": " + token_library[self.code].format(**self.parameters)

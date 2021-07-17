@@ -16,14 +16,12 @@ class BaseValidator(Validator):
             return False
         return True
 
-
     def _isfile(self, field, value):
         """Validate value is a valid, existing file."""
         if not isfile(value):
             self._error(field, "{} is not a valid file or does not exist.".format(value))
             return False
         return True
-
 
     def _isreadable(self, field, value):
         """Validate value is a readable file."""
@@ -32,7 +30,6 @@ class BaseValidator(Validator):
             return False
         return True
 
-
     def _iswriteable(self, field, value):
         """Validate value is a writeable file."""
         if not access(value, W_OK):
@@ -40,14 +37,12 @@ class BaseValidator(Validator):
             return False
         return True
 
-
     def _isexecutable(self, field, value):
         """Validate value is an executable file."""
         if not access(value, X_OK):
             self._error(field, "{} is not executable.".format(value))
             return False
         return True
-
 
     def _isjsonfile(self, field, value):
         """Validate the JSON file is decodable."""
@@ -60,7 +55,6 @@ class BaseValidator(Validator):
                 else:
                     return schema
         return {}
-
 
     def str_errors(self, error):
         """Create an error string."""
