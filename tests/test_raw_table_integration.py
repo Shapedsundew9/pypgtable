@@ -465,5 +465,5 @@ def test_arbitrary_sql_no_return():
     config = deepcopy(_CONFIG)
     t = raw_table(config)
     result = t.arbitrary_sql('INSERT INTO "test_table" ("id","metadata","right","uid")' +
-        ' VALUES (6,ARRAY[1],12,106) ON CONFLICT DO NOTHING')
+                             ' VALUES (6,ARRAY[1],12,106) ON CONFLICT DO NOTHING')
     assert result is None
