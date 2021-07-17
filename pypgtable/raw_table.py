@@ -178,7 +178,8 @@ class raw_table():
         return self.config['ptr_map'], pm_columns, pm_sql
 
     def _db_exists(self):
-        if self._db is not None: return self._db
+        if self._db is not None:
+            return self._db
         self._db = db_exists(self.config['database']['dbname'], self.config['database'])
         return self._db
 

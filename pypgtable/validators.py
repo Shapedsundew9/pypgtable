@@ -105,6 +105,5 @@ class _raw_table_config_validator(BaseValidator):
             self._error(field, "wait_for_table == True requires delete_table == False and create_table == False")
 
 
-
 with open(join(dirname(__file__), "formats/raw_table_config_format.json"), "r") as file_ptr:
     raw_table_config_validator = _raw_table_config_validator(load(file_ptr))
