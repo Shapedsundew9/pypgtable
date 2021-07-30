@@ -51,7 +51,7 @@ setup(
 
     # Denotes that our long_description is in Markdown; valid values are
     # text/plain, text/x-rst, and text/markdown
-    #git add -a
+    #
     # Optional if long_description is written in reStructuredText (rst) but
     # required for plain-text or Markdown; if unspecified, "applications should
     # attempt to render [the long_description] as text/x-rst; charset=UTF-8 and
