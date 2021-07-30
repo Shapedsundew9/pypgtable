@@ -1,13 +1,19 @@
 """Extension to the Cerberus Validator with common checks."""
 
-from json import load, JSONDecodeError
+from json import JSONDecodeError, load
+from os import R_OK, W_OK, X_OK, access
 from os.path import isdir, isfile
-from os import access, R_OK, W_OK, X_OK
+
 from cerberus import Validator
+from cerberus.errors import UNKNOWN_FIELD
 
 
 class BaseValidator(Validator):
     """Additional format checks."""
+
+    def error_str(self):
+        """Prettier format to a list of errors."""
+        return '\n\t'.join((field + ': ' + str(error) for field, error in self.errors.items()))
 
     def _isdir(self, field, value):
         """Validate value is a valid, existing directory."""
@@ -54,10 +60,12 @@ class BaseValidator(Validator):
                     self._error(field, "The file is not decodable JSON: {}".format(ex))
                 else:
                     return schema
-        return {}
+        return None
 
     def str_errors(self, error):
         """Create an error string."""
+        if error.code == UNKNOWN_FIELD.code:
+            error.rule == 'unknown field'
         str_tuple = (
             'Value: ' + str(error.value),
             'Rule: ' + str(error.rule),
