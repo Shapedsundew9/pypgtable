@@ -32,7 +32,7 @@ setup(
     # For a discussion on single-sourcing the version across setup.py and the
     # project code, see
     # https://packaging.python.org/en/latest/single_source_version.html
-    version='0.0.1.dev8',  # Required
+    version='0.0.1.dev9',  # Required
 
     # This is a one-line description or tagline of what your project does. This
     # corresponds to the "Summary" metadata field:
@@ -51,7 +51,7 @@ setup(
 
     # Denotes that our long_description is in Markdown; valid values are
     # text/plain, text/x-rst, and text/markdown
-    #
+    #git add -a
     # Optional if long_description is written in reStructuredText (rst) but
     # required for plain-text or Markdown; if unspecified, "applications should
     # attempt to render [the long_description] as text/x-rst; charset=UTF-8 and
