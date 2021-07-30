@@ -55,7 +55,7 @@ _CONFIG = {
         'right': 'id'
     },
     'data_file_folder': join(dirname(__file__), 'data'),
-    'data_files': ['data_values.json'],
+    'data_files': ['data_values.json', 'data_empty.json'],
     'delete_db': False,
     'delete_table': True,
     'create_db': True,

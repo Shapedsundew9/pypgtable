@@ -28,14 +28,12 @@ class _raw_table_config_validator(BaseValidator):
     def _check_with_valid_database_config(self, field, value):
         """Validate database configuration."""
         if not database_config_validator.validate(value):
-            for e in database_config_validator._errors:
-                self._error(field, self.str_errors(e))
+            self._error(database_config_validator._errors)
 
     def _check_with_valid_raw_table_column_config(self, field, value):
         """Validate every column configuration."""
         if not raw_table_column_config_validator.validate(value):
-            for e in raw_table_column_config_validator._errors:
-                self._error(field, self.str_errors(e))
+            self._error(raw_table_column_config_validator._errors)
         if value.get('nullable', False) and value.get('primary_key', False):
             self._error(field, 'A column cannot be both NULL and the PRIMARY KEY.')
         if value.get('unique', False) and value.get('primary_key', False):
@@ -65,8 +63,8 @@ class _raw_table_config_validator(BaseValidator):
         """Validate the data files if validate is set."""
         for filename in value:
             abspath = join(self.document['data_file_folder'], filename)
-            if not self._isjsonfile(field, abspath):
-                self._error(field, "Data file {} empty or invalid.".format(abspath))
+            if self._isjsonfile(field, abspath) is None:
+                self._error(field, "Data file {} is invalid.".format(abspath))
 
     def _check_with_valid_delete_db(self, field, value):
         """Validate delete_db."""

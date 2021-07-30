@@ -22,7 +22,7 @@ register_token_code("I05001", "Table {table} cannot be created as it already exi
 register_token_code("I05003", "Table {table} in database {dbname} does not yet exist. Waiting {backoff:.2}s to retry.")
 register_token_code("I05004", "Adding data to table {table} from {file}.")
 register_token_code("I05005", "Database {dbname} does not yet exist. Waiting {backoff:.2}s to retry.")
-register_token_code("E05000", "Configuration error: {error}")
+register_token_code("E05000", "Configuration error: See lines below.\n{error}")
 register_token_code("E05001", "{set} columns differ between DB {dbname} and table {table} configuration.")
 register_token_code("E05002", "Existing database table {table} columns do not match configuration. Column {column} "
                     "PRIMARY KEY constraint is inconsistent.")
@@ -132,12 +132,7 @@ class raw_table():
     def _validate_config(self):
         """Validate the table configuration."""
         if not raw_table_config_validator.validate(self.config):
-            error_str = '\n'
-            for field, error in raw_table_config_validator.errors.items():
-                tt = text_token({'E05000': {'error': field + ': ' + str(error)}})
-                _logger.error(tt)
-                error_str += str(tt) + '\n'
-            raise ValueError(error_str)
+            raise ValueError(text_token({'E05000': {'error': raw_table_config_validator.error_str()}}))
         self.config = raw_table_config_validator.sub_normalized(self.config)
 
     def _get_primary_key(self):
@@ -543,6 +538,8 @@ class raw_table():
         (list(tuple)): An list of the values specified by returning for each updated row or [] if returning is
             an empty iterable or None.
         """
+        if not values:
+            return []
         if returning == '*':
             returning = self._columns
         if update_str is None:

@@ -274,7 +274,7 @@ def db_create(dbname, config):
     connection = db_connect(config['maintenance_db'], config)
     connection.autocommit = True
     _logger.info(sql_str.as_string(connection))
-    db_transaction(config['maintenance_db'], config, (sql_str,), read=False)
+    db_transaction(config['maintenance_db'], config, (sql_str,), read=False, recons=1)
     _logger.info(text_token(
         {'I04002': {'dbname': config['maintenance_db'], 'config': config}}))
     db_disconnect(config['maintenance_db'], config)
@@ -302,12 +302,12 @@ def db_delete(dbname, config):
     connection = db_connect(config['maintenance_db'], config)
     connection.autocommit = True
     _logger.info(sql_str.as_string(connection))
-    db_transaction(config['maintenance_db'], config, (sql_str,), read=False)
+    db_transaction(config['maintenance_db'], config, (sql_str,), read=False, recons=1)
     _logger.info(text_token({'I04003': {'dbname': dbname, 'config': config}}))
     db_disconnect(config['maintenance_db'], config)
 
 
-def db_transaction(dbname, config, sql_str_iter, read=True, repeatable=False):
+def db_transaction(dbname, config, sql_str_iter, read=True, repeatable=False, recons=_DB_RECONNECTIONS):
     """Execute SQL statements.
 
     SQL statements must either be all read or all write as defined by the read argument.
@@ -335,6 +335,9 @@ def db_transaction(dbname, config, sql_str_iter, read=True, repeatable=False):
             'password' (str): Password to login with
     }
     sql_str_iter (iterable(sql)): An iterable of valid SQL strings.
+    read (bool): If False transaction will be committed.
+    repeatable (bool): If True read transaction is done with repeatable read isolation.
+    recons (int): >= 1. The number of reconnection attempts before erroring out.
 
     Returns
     -------
@@ -343,8 +346,9 @@ def db_transaction(dbname, config, sql_str_iter, read=True, repeatable=False):
     token2 = {'rw': ('write', 'read')[read], 'dbname': dbname, 'total': _DB_TRANSACTION_ATTEMPTS}
     token3 = deepcopy(token2)
     token3['attempts'] = _DB_TRANSACTION_ATTEMPTS
+    token3['total'] = recons
     backoff_gen = backoff_generator(_INITIAL_DELAY, _BACKOFF_STEPS, _BACKOFF_FUZZ)
-    for reconnection in range(1, _DB_RECONNECTIONS + 1):
+    for reconnection in range(1, recons + 1):
         for transaction_attempt in range(1, _DB_TRANSACTION_ATTEMPTS + 1):
             token2['attempt'] = transaction_attempt
             connection = db_connect(dbname, config)
