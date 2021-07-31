@@ -2,16 +2,20 @@
 
 
 from copy import deepcopy
-from cerberus import Validator
 from json import load
 from os.path import dirname, join
+from logging import NullHandler, getLogger
 from .utils.base_validator import BaseValidator
 
 
+_logger = getLogger(__name__)
+_logger.addHandler(NullHandler())
+
+
 with open(join(dirname(__file__), "formats/database_config_format.json"), "r") as file_ptr:
-    database_config_validator = Validator(load(file_ptr))
+    database_config_validator = BaseValidator(load(file_ptr))
 with open(join(dirname(__file__), "formats/raw_table_column_config_format.json"), "r") as file_ptr:
-    raw_table_column_config_validator = Validator(load(file_ptr))
+    raw_table_column_config_validator = BaseValidator(load(file_ptr))
 
 
 class _raw_table_config_validator(BaseValidator):
@@ -28,12 +32,15 @@ class _raw_table_config_validator(BaseValidator):
     def _check_with_valid_database_config(self, field, value):
         """Validate database configuration."""
         if not database_config_validator.validate(value):
-            self._error(database_config_validator._errors)
+            _logger.debug("Database config validator errors:\n{}".format(database_config_validator.error_str()))
+            self._error(field, database_config_validator.error_str())
 
     def _check_with_valid_raw_table_column_config(self, field, value):
         """Validate every column configuration."""
         if not raw_table_column_config_validator.validate(value):
-            self._error(raw_table_column_config_validator._errors)
+            _logger.debug("Raw table column {} config validator errors:\n{}".format(
+                field, raw_table_column_config_validator.error_str()))
+            self._error(field, raw_table_column_config_validator.error_str())
         if value.get('nullable', False) and value.get('primary_key', False):
             self._error(field, 'A column cannot be both NULL and the PRIMARY KEY.')
         if value.get('unique', False) and value.get('primary_key', False):

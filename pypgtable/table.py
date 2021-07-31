@@ -1,16 +1,29 @@
 """Application layer wrapper for raw_table."""
 
 
+from os.path import join
+from json import load
 from copy import deepcopy
 from logging import getLogger, NullHandler
 from .raw_table import raw_table
+from .utils.text_token import text_token
 
 
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
 
 
-def _ID_FUNC(x):
+def ID_FUNC(x):
+    """Identity function.
+
+    Args
+    ----
+    x (Anything)
+
+    Returns
+    -------
+    (Anything) returns x
+    """
     return x
 
 
@@ -19,9 +32,11 @@ class table():
 
     def __init__(self, config):
         """Create a table object."""
-        self.raw = raw_table(config)
+        self.raw = raw_table(config, populate=False)
         self._entry_validator = None
-        self._conversions = {column: {'encode': _ID_FUNC, 'decode': _ID_FUNC} for column in self.raw.config['schema']}
+        self._conversions = {column: {'encode': ID_FUNC, 'decode': ID_FUNC} for column in self.raw.config['schema']}
+        self._conversions.update({c: {'encode': e, 'decode': d} for c, e, d in self.raw.config['conversions']})
+        self._populate_table()
 
     def __getitem__(self, pk_value):
         """Query the table for the row with primary key value pk_value.
@@ -54,6 +69,32 @@ class table():
         new_values = deepcopy(values)
         new_values[self.raw._primary_key] = pk_value
         self.upsert((new_values,))
+
+    def __len__(self):
+        """Count the number of rows in the table."""
+        return len(self.raw)
+
+    def _populate_table(self):
+        """Add data to table after creation.
+
+        The JSON file must be a list of dicts.
+        The dicts (rows) will be inserted into the table using batches of contiguous rows
+        with the exactly the same fields defined i.e. this allows you to leave fields in some
+        rows undefined and use the database table default. However, it breaks the inserts into
+        smaller batches than may be otherwise possible reducing the overall performance. If order
+        does not matter arrange your JSON file into the minimum number of contiguous matching rows.
+        The intention of this process is to maintain the order of rows in the from the JSON file.
+
+        Dict keys that are not table columns will be ignored.
+        Only executed if this instance of raw_table() created it.
+        See self._create_table().
+        """
+        if self.raw.creator and self.raw.config['data_files']:
+            for data_file in self.raw.config['data_files']:
+                abspath = join(self.raw.config['data_file_folder'], data_file)
+                _logger.info(text_token({'I05004': {'table': self.raw.config['table'], 'file': abspath}}))
+                with open(abspath, "r") as file_ptr:
+                    self.insert(load(file_ptr))
 
     def _return_container(self, columns, values, container='dict'):
         if columns == '*':
