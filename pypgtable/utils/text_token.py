@@ -93,7 +93,7 @@ class text_token():
         This can be recursive if a parameter is of type text_token.
         """
         if self.code not in token_library:
-            return token_library['E00000'].format(vars(self))
+            return token_library['E00000'].format(**vars(self))
         # text_token._logger.debug("Code {}: Parameters: {} Library string: {}".format(
         #   self.code, self.parameters, token_library[self.code]))
         return self.code + ": " + token_library[self.code].format(**self.parameters)

@@ -101,7 +101,7 @@ class raw_table():
     need only have SELECT, INSERT & UPDATE privileges.
     """
 
-    def __init__(self, config):
+    def __init__(self, config, populate=True):
         """Connect to or create all required objects.
 
         Args
@@ -110,6 +110,8 @@ class raw_table():
         """
         self.config = deepcopy(config)
         self._validate_config()
+        self.creator = False
+        self.populate = populate
         self._table = sql.Identifier(self.config['table'])
         self._entry_validator = None
         self._columns = None
@@ -238,7 +240,7 @@ class raw_table():
         Only executed if this instance of raw_table() created it.
         See self._create_table().
         """
-        if not len(self) and self.config['data_files']:
+        if self.populate and self.config['data_files']:
             for data_file in self.config['data_files']:
                 abspath = join(self.config['data_file_folder'], data_file)
                 _logger.info(text_token({'I05004': {'table': self.config['table'], 'file': abspath}}))
@@ -371,8 +373,7 @@ class raw_table():
 
         Assumption is that other processes may also be trying to create the table and so
         duplicate table (or privilege) exceptions are not considered errors just a race condition
-        to wait out. If this process does create the table then it will populate it with any
-        data specified in the configuration.
+        to wait out. If this process does create the table then it will set the self.creator flag.
 
         Returns
         -------
@@ -408,6 +409,7 @@ class raw_table():
             raise e
 
         self._create_indices()
+        self.creator = True
         self._populate_table()
         return self._table_definition()
 

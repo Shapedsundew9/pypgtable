@@ -115,5 +115,14 @@
         "meta": {
             "description": "If the table does not exist keep checking until it does."
         }
+    },
+    "conversions": {
+        "type": "list",
+        "default": [],
+        "schema": {
+            "type": "list",
+            "minlength": 3,
+            "maxlength": 3
+        }
     }
 }
