@@ -1,13 +1,13 @@
 """Application layer wrapper for raw_table."""
 
 
-from os.path import join
-from json import load
 from copy import deepcopy
-from logging import getLogger, NullHandler
+from json import load
+from logging import NullHandler, getLogger
+from os.path import join
+
 from .raw_table import raw_table
 from .utils.text_token import text_token
-
 
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())

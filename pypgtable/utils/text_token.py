@@ -5,7 +5,6 @@ This module is used to map tokens to user text.
 
 from logging import getLogger
 
-
 """ Valid token code prefixes
     'D': Debug
     'I': Information

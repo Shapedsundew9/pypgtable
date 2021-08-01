@@ -3,10 +3,10 @@
 
 from copy import deepcopy
 from json import load
-from os.path import dirname, join
 from logging import NullHandler, getLogger
-from .utils.base_validator import BaseValidator
+from os.path import dirname, join
 
+from .utils.base_validator import BaseValidator
 
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())

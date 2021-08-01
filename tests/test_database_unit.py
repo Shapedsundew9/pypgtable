@@ -1,15 +1,19 @@
 """Unit tests for the database.py module."""
 
 from copy import deepcopy
-from psycopg2 import sql, OperationalError, ProgrammingError, errors
-from psycopg2.extensions import ISOLATION_LEVEL_DEFAULT, ISOLATION_LEVEL_REPEATABLE_READ
-from pypgtable import database
-from pypgtable.utils.reference import sequential_reference
-from pypgtable.database import _connect_core, db_reconnect, db_connect, db_disconnect, db_transaction
-from pypgtable.database import db_disconnect_all, _DB_TRANSACTION_ATTEMPTS, db_exists, db_create, db_delete
-from pypgtable.common import backoff_generator
-from logging import getLogger, NullHandler
+from logging import NullHandler, getLogger
 
+from psycopg2 import OperationalError, ProgrammingError, errors, sql
+from psycopg2.extensions import (ISOLATION_LEVEL_DEFAULT,
+                                 ISOLATION_LEVEL_REPEATABLE_READ)
+
+from pypgtable import database
+from pypgtable.common import backoff_generator
+from pypgtable.database import (_DB_TRANSACTION_ATTEMPTS, _connect_core,
+                                db_connect, db_create, db_delete,
+                                db_disconnect, db_disconnect_all, db_exists,
+                                db_reconnect, db_transaction)
+from pypgtable.utils.reference import sequential_reference
 
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
