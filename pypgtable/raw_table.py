@@ -1,16 +1,19 @@
 """Simplified database table access."""
 
-from logging import getLogger, DEBUG, NullHandler
 from copy import deepcopy
-from os.path import join
 from json import load
+from logging import DEBUG, NullHandler, getLogger
+from os.path import join
 from time import sleep
-from psycopg2 import sql, errors, ProgrammingError
-from .database import db_transaction, db_connect, db_exists, db_create, db_delete
-from .common import backoff_generator
-from .validators import raw_table_config_validator, raw_table_column_config_validator as rtccv
-from .utils.text_token import text_token, register_token_code
 
+from psycopg2 import ProgrammingError, errors, sql
+
+from .common import backoff_generator
+from .database import (db_connect, db_create, db_delete, db_exists,
+                       db_transaction)
+from .utils.text_token import register_token_code, text_token
+from .validators import raw_table_column_config_validator as rtccv
+from .validators import raw_table_config_validator
 
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())

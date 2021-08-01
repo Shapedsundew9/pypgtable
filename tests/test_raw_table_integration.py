@@ -2,12 +2,13 @@
 
 
 from copy import deepcopy
-from os.path import join, dirname
-from pypgtable.raw_table import raw_table
 from inspect import stack
-from pytest import approx
-from logging import getLogger, NullHandler
+from logging import NullHandler, getLogger
+from os.path import dirname, join
 
+from pytest import approx
+
+from pypgtable import raw_table
 
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())

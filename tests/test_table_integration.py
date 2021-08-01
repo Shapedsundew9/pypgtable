@@ -1,12 +1,13 @@
 """Unit tests for raw_table.py."""
 
 from copy import deepcopy
-from os.path import join, dirname
-from pypgtable.table import table
 from inspect import stack
-from pytest import approx
-from logging import getLogger, NullHandler
+from logging import NullHandler, getLogger
+from os.path import dirname, join
 
+from pytest import approx
+
+from pypgtable import table
 
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())

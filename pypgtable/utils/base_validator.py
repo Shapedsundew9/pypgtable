@@ -1,13 +1,13 @@
 """Extension to the Cerberus Validator with common checks."""
 
 from json import JSONDecodeError, load
+from logging import NullHandler, getLogger
 from os import R_OK, W_OK, X_OK, access
 from os.path import isdir, isfile
-from logging import NullHandler, getLogger
 from pprint import pformat
+
 from cerberus import Validator
 from cerberus.errors import UNKNOWN_FIELD
-
 
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())

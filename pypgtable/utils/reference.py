@@ -1,6 +1,6 @@
 """Common routines."""
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from random import choice, getrandbits
 
 EST = timezone(timedelta(hours=-5))
