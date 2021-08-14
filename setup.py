@@ -138,7 +138,7 @@ setup(
     #
     # For an analysis of "install_requires" vs pip's requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
-    install_requires=['psycopg2', 'cerberus', 'obscure-password'],  # Optional
+    install_requires=['psycopg2', 'cerberus', 'obscure_password'],  # Optional
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). Users will be able to install these using the "extras"
