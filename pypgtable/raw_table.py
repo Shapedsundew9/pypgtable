@@ -4,6 +4,7 @@ from copy import deepcopy
 from json import load
 from logging import DEBUG, NullHandler, getLogger
 from os.path import join
+from pprint import pformat
 from time import sleep
 
 from psycopg2 import ProgrammingError, errors, sql
@@ -93,6 +94,11 @@ _TABLE_RETURNING_SQL = sql.SQL(" RETURNING ")
 _DEFAULT_UPDATE_STR = "{{{0}}}={{EXCLUDED.{0}}}"
 
 
+def default_config():
+    """Get a config template."""
+    return raw_table_config_validator.sub_normalized({'table': 'your_table_name'})
+
+
 class raw_table():
     """Connects to (or creates as needed) a postgres database & table.
 
@@ -111,16 +117,13 @@ class raw_table():
         ----
         config (dict): The table configuration. See database/formats/raw_table_config_format.json.
         """
+        self._primary_key = self._db = self._columns = self._entry_validator = None
         self.config = deepcopy(config)
         self._validate_config()
         self.creator = False
         self.populate = populate
         self._table = sql.Identifier(self.config['table'])
-        self._entry_validator = None
-        self._columns = None
         self._pm, self._pm_columns, self._pm_sql = self._ptr_map_def()
-        self._primary_key = self._get_primary_key()
-        self._db = None
         if self.config['delete_db']:
             self.delete_db()
         if not self._db_exists() and self.config['create_db']:
@@ -303,15 +306,20 @@ class raw_table():
         schema = {c: rtccv.normalized({'type': d.upper(), 'nullable': n == 'YES'}) for c, d, n in results}
         constraints = self._db_transaction((_TABLE_GET_PRIMARY_KEY_SQL.format(sql.Literal(self.config['table'])),))
         for column, constraint in constraints[0].fetchall():
-            schema[column]['primary_key'] = constraint == 'PRIMARY KEY'
-            schema[column]['unique'] = constraint == 'UNIQUE'
+            schema[column]['primary_key'] = (constraint == 'PRIMARY KEY') or schema[column].get('primary_key', False)
+            schema[column]['unique'] = (constraint == 'UNIQUE') or schema[column].get('primary_key', False)
+
         self.config.setdefault('schema', schema)
+        self._primary_key = self._get_primary_key()
+        _logger.debug("Table {} schema:\n{}".format(self.config['table'], pformat(self.config['schema'])))
+
         unmatched_set = set(columns) - set(self.config['schema'].keys())
         if unmatched_set:
-            _logger.error(text_token({'E05001': {
-                          'set': unmatched_set, 'dbname': self.config['database']['dbname'], 'table': self.config['table']}}))
-            raise ValueError("Existing database table {} columns do not match configuration. Unmatched set = {}".format(
-                self.config['table'], unmatched_set))
+            token = text_token({'E05001': {
+                          'set': unmatched_set, 'dbname': self.config['database']['dbname'], 'table': self.config['table']}})
+            _logger.error(token)
+            raise ValueError(token)
+
         for column in columns:
             if schema[column]['primary_key'] != self.config['schema'][column]['primary_key']:
                 raise ValueError(text_token({'E05002': {'table': self.config['table'], 'column': column}}))
@@ -435,7 +443,11 @@ class raw_table():
     def _sql_queries_transaction(self, sql_str_list, repeatable=False):
         if _logit():
             _logger.debug(text_token({'I05000': {'sql': '\n'.join([self._sql_to_string(s) for s in sql_str_list])}}))
-        return tuple((dbcur.fetchall() for dbcur in self._db_transaction(sql_str_list, repeatable)))
+        cursors = self._db_transaction(sql_str_list, repeatable)
+        data = tuple((dbcur.fetchall() for dbcur in cursors))
+        for cursor in cursors:
+            cursor.close()
+        return data
 
     def select(self, query_str='', literals={}, columns='*', repeatable=False):
         """Select columns to return for rows matching query_str.
@@ -498,8 +510,11 @@ class raw_table():
         """
         if columns == '*':
             columns = self._columns
-        if not (self._pm_columns <= set(columns)):
-            raise ValueError("columns must be a the same or a superset of ptr_map columns.")
+        else:
+            columns = list(columns)
+            for ptr in self._pm_columns:
+                if ptr not in columns:
+                    columns.append(ptr)
         t_columns = sql.SQL('t.') + sql.SQL(', t.').join(map(sql.Identifier, columns))
         columns = sql.SQL(', ').join(map(sql.Identifier, columns))
         format_dict = self._format_dict(literals)
@@ -563,7 +578,10 @@ class raw_table():
             update_sql += _TABLE_RETURNING_SQL + sql.SQL(',').join([sql.Identifier(column) for column in returning])
         retval = self._db_transaction((_TABLE_INSERT_SQL.format(
             self._table, columns_sql, values_sql) + update_sql,), read=False)[0]
-        return retval.fetchall() if returning else []
+        data = retval.fetchall() if returning else []
+        if returning:
+            retval.close()
+        return data
 
     def insert(self, columns, values):
         """Insert values.
@@ -604,7 +622,10 @@ class raw_table():
         if returning:
             sql_str += _TABLE_RETURNING_SQL + sql.SQL(',').join([sql.Identifier(column) for column in returning])
         retval = self._db_transaction((sql_str,), read=False)[0]
-        return retval.fetchall() if returning else []
+        data = retval.fetchall() if returning else []
+        if returning:
+            retval.close()
+        return data
 
     def delete(self, query_str, literals={}, returning=tuple()):
         """Delete rows from the table.
@@ -632,4 +653,7 @@ class raw_table():
         if returning:
             sql_str += _TABLE_RETURNING_SQL + sql.SQL(',').join([sql.Identifier(column) for column in returning])
         retval = self._db_transaction((sql_str,), read=False)[0]
-        return retval.fetchall() if returning else []
+        data = retval.fetchall() if returning else []
+        if returning:
+            retval.close()
+        return data

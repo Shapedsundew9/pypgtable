@@ -1,6 +1,7 @@
 {
     "database": {
         "type": "dict",
+        "default": {},
         "check_with": "valid_database_config",
         "meta": {
             "description": "Definition of the database location and user to access the table."

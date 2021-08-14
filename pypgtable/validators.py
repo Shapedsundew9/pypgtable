@@ -13,9 +13,9 @@ _logger.addHandler(NullHandler())
 
 
 with open(join(dirname(__file__), "formats/database_config_format.json"), "r") as file_ptr:
-    database_config_validator = BaseValidator(load(file_ptr))
+    database_config_validator = BaseValidator(load(file_ptr), purge_unknown=True)
 with open(join(dirname(__file__), "formats/raw_table_column_config_format.json"), "r") as file_ptr:
-    raw_table_column_config_validator = BaseValidator(load(file_ptr))
+    raw_table_column_config_validator = BaseValidator(load(file_ptr), purge_unknown=True)
 
 
 class _raw_table_config_validator(BaseValidator):
@@ -23,10 +23,11 @@ class _raw_table_config_validator(BaseValidator):
     def sub_normalized(self, document):
         """Normalize sub-documents."""
         document = deepcopy(document)
-        document['database'] = database_config_validator.normalized(document['database'])
+        document['database'] = database_config_validator.normalized(document.get('database', {}))
         if 'schema' in document:
-            for column in document['schema']:
-                document['schema'][column] = raw_table_column_config_validator.normalized(document['schema'][column])
+            for column, definition in document['schema'].items():
+                definition['unique'] = definition.get('unique', False) or definition.get('primary_key', False)
+                document['schema'][column] = raw_table_column_config_validator.normalized(definition)
         return self.normalized(document)
 
     def _check_with_valid_database_config(self, field, value):
@@ -43,8 +44,6 @@ class _raw_table_config_validator(BaseValidator):
             self._error(field, raw_table_column_config_validator.error_str())
         if value.get('nullable', False) and value.get('primary_key', False):
             self._error(field, 'A column cannot be both NULL and the PRIMARY KEY.')
-        if value.get('unique', False) and value.get('primary_key', False):
-            self._error(field, 'A column cannot be both UNIQUE and the PRIMARY KEY.')
 
     def _check_with_valid_schema_config(self, field, value):
         """Validate the overall schema. There can be only one primary key."""
@@ -111,4 +110,4 @@ class _raw_table_config_validator(BaseValidator):
 
 
 with open(join(dirname(__file__), "formats/raw_table_config_format.json"), "r") as file_ptr:
-    raw_table_config_validator = _raw_table_config_validator(load(file_ptr))
+    raw_table_config_validator = _raw_table_config_validator(load(file_ptr), purge_unknown=True)

@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 from logging import NullHandler, getLogger
+from threading import get_ident
 
 from psycopg2 import OperationalError, ProgrammingError, errors, sql
 from psycopg2.extensions import (ISOLATION_LEVEL_DEFAULT,
@@ -9,10 +10,10 @@ from psycopg2.extensions import (ISOLATION_LEVEL_DEFAULT,
 
 from pypgtable import database
 from pypgtable.common import backoff_generator
-from pypgtable.database import (_DB_TRANSACTION_ATTEMPTS, _connect_core,
-                                db_connect, db_create, db_delete,
-                                db_disconnect, db_disconnect_all, db_exists,
-                                db_reconnect, db_transaction)
+from pypgtable.database import (_DB_TRANSACTION_ATTEMPTS, _clean_connections,
+                                _connect_core, db_connect, db_create,
+                                db_delete, db_disconnect, db_disconnect_all,
+                                db_exists, db_reconnect, db_transaction)
 from pypgtable.utils.reference import sequential_reference
 
 _logger = getLogger(__name__)
@@ -87,7 +88,7 @@ def test_db_reconnect_p1(monkeypatch):
 
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
-    monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: mock_connection()})
+    monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: {get_ident(): mock_connection()}})
     assert db_reconnect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_2
 
 
@@ -106,7 +107,7 @@ def test_db_reconnect_n0(monkeypatch):
 
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
-    monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: mock_connection()})
+    monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: {get_ident(): mock_connection()}})
     assert db_reconnect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_2
 
 
@@ -146,7 +147,7 @@ def test_db_reconnect_n1(monkeypatch):
     monkeypatch.setattr(database, 'connect', mock_connect)
     monkeypatch.setattr(database, 'sleep', mock_sleep)
     backoff = next(backoff_generator(fuzz=False))
-    monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: mock_connection()})
+    monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: {get_ident(): mock_connection()}})
     assert db_reconnect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_2
     assert backoff >= sleep_duration/1.1 and backoff <= sleep_duration/0.9
 
@@ -189,11 +190,51 @@ def test_db_reconnect_n2(monkeypatch):
         sleep_duration += backoff
     monkeypatch.setattr(database, 'connect', mock_connect)
     monkeypatch.setattr(database, 'sleep', mock_sleep)
-    monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: mock_connection()})
+    monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: {get_ident(): mock_connection()}})
     backoff_gen = backoff_generator(fuzz=False)
     total_backoff = sum((next(backoff_gen) for _ in range(_INFINITE_BACKOFFS)))
     assert db_reconnect(_MOCK_DBNAME, _MOCK_CONFIG).value == _MOCK_VALUE_2
     assert total_backoff >= sleep_duration / 1.1 and total_backoff <= sleep_duration / 0.9
+
+
+def test_db_reconnect_n3(monkeypatch):
+    """Check error after all retries.
+
+    There is a pre-existing connection.
+    The pre-existing connection is successfully closed.
+    The new connection errors.
+    The number of retries is configured to 0 i.e. no try.
+    """
+    db_disconnect_all()
+
+    def _connection_iter():
+        connections = [_MOCK_VALUE_1]
+        connections.append(_MOCK_ERROR)
+        connections.append(_MOCK_VALUE_2)
+        for i in connections:
+            yield i
+    mock_values = _connection_iter()
+
+    class mock_connection():
+        def __init__(self) -> None:
+            self.value = next(mock_values)
+            if self.value == _MOCK_ERROR:
+                raise OperationalError
+
+        def close(self): self.value = None
+
+    def mock_connect(*args, **kwargs): return mock_connection()
+
+    monkeypatch.setattr(database, 'connect', mock_connect)
+    monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: {get_ident(): mock_connection()}})
+    config = deepcopy(_MOCK_CONFIG)
+    config['retries'] = 0
+    try:
+        db_reconnect(_MOCK_DBNAME, config)
+    except OperationalError:
+        pass
+    else:
+        assert False
 
 
 def test_db_connect_p0(monkeypatch):
@@ -524,6 +565,68 @@ def test_db_transaction_n2(monkeypatch):
     assert db_connect(_MOCK_DBNAME, _MOCK_CONFIG).rolledback
 
 
+def test_db_transaction_n3(monkeypatch):
+    """Raise an OperationalError on the 2nd of 3 repeatable read SQL statements.
+
+    A cursor for each SQL statement should be returned in the order
+    the statement were submitted.
+
+    0. The first statement execution will be discarded
+    1. The second statement execution will produce no results (OperationalError)
+    2. The first statement will be re-executed
+    3. The second statement will be re-executed
+    4. The third statement will be executed
+
+    Isolation should be reset on the OperationalError and then set again on
+    the re-try.
+    """
+    db_disconnect_all()
+    mock_connection_ref = sequential_reference()
+    mock_cursor_ref = sequential_reference()
+
+    class mock_cursor():
+        def __init__(self) -> None: self.value = next(mock_cursor_ref)
+
+        def execute(self, sql_str):
+            if self.value == 1:
+                raise OperationalError
+
+        def fetchone(self): return self.value
+
+    class mock_connection():
+        def __init__(self) -> None:
+            self.value = next(mock_connection_ref)
+            self.isolation_level = ISOLATION_LEVEL_DEFAULT
+
+        def close(self): self.value = None
+
+        def cursor(self):
+            assert self.isolation_level == ISOLATION_LEVEL_REPEATABLE_READ
+            return mock_cursor()
+
+        def set_session(self, isolation_level):
+            assert self.isolation_level != isolation_level
+            self.isolation_level = isolation_level
+
+    def mock_connect(*args, **kwargs): return mock_connection()
+    monkeypatch.setattr(database, 'connect', mock_connect)
+    dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"), repeatable=True)
+    assert len(dbcur_list) == 3
+    assert dbcur_list[0].fetchone() == 2
+    assert dbcur_list[1].fetchone() == 3
+    assert dbcur_list[2].fetchone() == 4
+
+
+def test_db_transaction_n4(monkeypatch):
+    """All reconnection attempts fail and a ProgrammingError is raised."""
+    try:
+        db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", ), recons=0)
+    except ProgrammingError:
+        pass
+    else:
+        assert False
+
+
 def test_db_exists_p0(monkeypatch):
     """Test the case when the DB exists."""
     db_disconnect_all()
@@ -647,3 +750,37 @@ def test_db_delete_p0(monkeypatch):
     monkeypatch.setattr(database, 'connect', mock_connect)
     monkeypatch.setattr(sql.Composed, 'as_string', mock_as_string)
     db_delete(_MOCK_DBNAME, _MOCK_CONFIG)
+
+
+def test_clean_connections_p0(monkeypatch):
+    """Add a connection, fake a closed thread and make sure it is removed."""
+    db_disconnect_all()
+
+    class mock_connection():
+        def __init__(self) -> None: self.value = _MOCK_VALUE_1
+        def close(self): self.value = None
+
+    def mock_connect(*args, **kwargs): return mock_connection()
+    monkeypatch.setattr(database, 'connect', mock_connect)
+    db_connect(_MOCK_DBNAME, _MOCK_CONFIG)
+
+    monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: {1234: None}})
+    _clean_connections()
+    assert database._connections[_MOCK_CONFIG['host']][_MOCK_DBNAME].get(1234, None) is None
+
+
+def test_clean_connections_n0(monkeypatch):
+    """Add a connection, fake a closed thread and make sure it is removed."""
+    db_disconnect_all()
+
+    class mock_connection():
+        def __init__(self) -> None: self.value = _MOCK_VALUE_1
+        def close(self): raise ProgrammingError
+
+    def mock_connect(*args, **kwargs): return mock_connection()
+    monkeypatch.setattr(database, 'connect', mock_connect)
+    db_connect(_MOCK_DBNAME, _MOCK_CONFIG)
+
+    monkeypatch.setitem(database._connections, _MOCK_CONFIG['host'], {_MOCK_DBNAME: {1234: mock_connection()}})
+    _clean_connections()
+    assert database._connections[_MOCK_CONFIG['host']][_MOCK_DBNAME][1234].value == _MOCK_VALUE_1
