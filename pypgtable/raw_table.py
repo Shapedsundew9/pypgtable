@@ -4,7 +4,6 @@ from copy import deepcopy
 from json import load
 from logging import DEBUG, NullHandler, getLogger
 from os.path import join
-from pprint import pformat
 from time import sleep
 
 from psycopg2 import ProgrammingError, errors, sql

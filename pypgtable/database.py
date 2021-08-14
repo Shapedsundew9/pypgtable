@@ -15,6 +15,7 @@ from threading import enumerate, get_ident
 from time import sleep
 
 from obscure_password import unobscure
+
 from psycopg2 import (InterfaceError, OperationalError, ProgrammingError,
                       connect, errors, sql)
 from psycopg2.extensions import (ISOLATION_LEVEL_DEFAULT,
