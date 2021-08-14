@@ -14,7 +14,6 @@ from pypgtable import default_config, raw_table
 from pypgtable.database import db_transaction
 from pypgtable.utils.reference import sequential_reference
 
-
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
 

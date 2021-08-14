@@ -4,7 +4,6 @@ from copy import deepcopy
 from logging import NullHandler, getLogger
 from threading import get_ident
 
-
 from psycopg2 import OperationalError, ProgrammingError, errors, sql
 from psycopg2.extensions import (ISOLATION_LEVEL_DEFAULT,
                                  ISOLATION_LEVEL_REPEATABLE_READ)
@@ -15,7 +14,6 @@ from pypgtable.database import (_DB_TRANSACTION_ATTEMPTS, _clean_connections,
                                 _connect_core, db_connect, db_create,
                                 db_delete, db_disconnect, db_disconnect_all,
                                 db_exists, db_reconnect, db_transaction)
-
 from pypgtable.utils.reference import sequential_reference
 
 _logger = getLogger(__name__)

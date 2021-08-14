@@ -98,7 +98,7 @@ class table():
 
     def columns(self):
         """Return a tuple of all column names."""
-        return tuple(self.raw._columns)
+        return self.raw._columns
 
     def _return_container(self, columns, values, container='dict'):
         if container == 'tuple':
