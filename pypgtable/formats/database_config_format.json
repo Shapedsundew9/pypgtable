@@ -5,6 +5,7 @@
         "minlength": 1,
         "maxlength": 64,
         "regex": "[a-zA-Z][a-zA-Z0-9_-]*",
+        "default": "postgres",
         "meta": {
             "description": "The name of the database."
         }

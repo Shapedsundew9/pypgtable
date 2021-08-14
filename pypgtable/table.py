@@ -96,9 +96,11 @@ class table():
                 with open(abspath, "r") as file_ptr:
                     self.insert(load(file_ptr))
 
+    def columns(self):
+        """Return a tuple of all column names."""
+        return self.raw._columns
+
     def _return_container(self, columns, values, container='dict'):
-        if columns == '*':
-            columns = self.raw._columns
         if container == 'tuple':
             return self.decode_values_to_tuple(columns, values)
         if container == 'list':
@@ -246,10 +248,15 @@ class table():
                 SELECT "column1", "column3" FROM "test_table" WHERE "column1" = 1 ORDER BY "column1" ASC
         literals (dict): Keys are labels used in query_str. Values are literals to replace the labels.
             NOTE: Literal values for encoded columns must be encoded. See encode_value().
-        columns (iter): The columns to be returned on update. If '*' defined all columns are returned.
+        columns (iter): The columns to be returned on update. If '*' defined all columns are returned
+            in the order of self.columns()
         repeatable (bool): If True select transaction is done with repeatable read isolation.
-        container (str): Defines the type of container in the returned list. Set as either 'list', 'tuple'
-            or any other value to return dicts.
+        container (str): Defines the type of container in the returned list. Set as either
+            'tuple': Returns a list(tuple) where tuples are in the order of columns.
+            'list': Returns a list(list) where sub-lists are in the order of columns.
+            'pkdict': Returns a list(dict(dict)) where the first dict is is a dict of primary keys
+                and the second a dict of columns.
+            any other value returns list(dicts) with the specified columns.
 
         Returns
         -------
@@ -285,8 +292,12 @@ class table():
             NOTE: Literal values for encoded columns must be encoded. See encode_value().
         columns (iter): The columns to be returned on update. If '*' defined all columns are returned.
         repeatable (bool): If True select transaction is done with repeatable read isolation.
-        container (str): Defines the type of container in the returned list. Set as either 'list', 'tuple'
-            or any other value to return dicts.
+        container (str): Defines the type of container in the returned list. Set as either
+            'tuple': Returns a list(tuple) where tuples are in the order of columns.
+            'list': Returns a list(list) where sub-lists are in the order of columns.
+            'pkdict': Returns a list(dict(dict)) where the first dict is is a dict of primary keys
+                and the second a dict of columns.
+            any other value returns list(dicts) with the specified columns.
 
         Returns
         -------
@@ -296,7 +307,7 @@ class table():
         _columns = self.raw._columns if columns == '*' else list(columns)
         if container == 'pkdict' and self.raw._primary_key not in _columns:
             _columns.append(self.raw._primary_key)
-        values = self.raw.recursive_select(query_str, literals, columns, repeatable)
+        values = self.raw.recursive_select(query_str, literals, _columns, repeatable)
         return self._return_container(_columns, values, container)
 
     def upsert(self, values_dict, update_str=None, literals={}, returning=tuple(), container='dict'):
@@ -319,8 +330,12 @@ class table():
         literals (dict): Keys are labels used in update_str. Values are literals to replace the labels.
             NOTE: Literal values for encoded columns must be encoded. See encode_value().
         returning (iter): The columns to be returned on update. If None or empty no columns will be returned.
-        container (str): Defines the type of container in the returned list. Set as either 'list', 'tuple'
-            or any other value to return dicts.
+        container (str): Defines the type of container in the returned list. Set as either
+            'tuple': Returns a list(tuple) where tuples are in the order of columns.
+            'list': Returns a list(list) where sub-lists are in the order of columns.
+            'pkdict': Returns a list(dict(dict)) where the first dict is is a dict of primary keys
+                and the second a dict of columns.
+            any other value returns list(dicts) with the specified columns.
 
         Returns
         -------
@@ -364,8 +379,12 @@ class table():
         literals (dict): Keys are labels used in update_str. Values are literals to replace the labels.
             NOTE: Literal values for encoded columns must be encoded. See encode_value().
         returning (iter): An iterable of column names to return for each updated row.
-        container (str): Defines the type of container in the returned list. Set as either 'list', 'tuple'
-            or any other value to return dicts.
+        container (str): Defines the type of container in the returned list. Set as either
+            'tuple': Returns a list(tuple) where tuples are in the order of columns.
+            'list': Returns a list(list) where sub-lists are in the order of columns.
+            'pkdict': Returns a list(dict(dict)) where the first dict is is a dict of primary keys
+                and the second a dict of columns.
+            any other value returns list(dicts) with the specified columns.
 
         Returns
         -------
@@ -375,7 +394,7 @@ class table():
         _returning = self.raw._columns if returning == '*' else list(returning)
         if container == 'pkdict' and returning and self.raw._primary_key not in _returning:
             _returning.append(self.raw._primary_key)
-        retval = self.raw.update(update_str, query_str, literals, returning)
+        retval = self.raw.update(update_str, query_str, literals, _returning)
         return self._return_container(_returning, retval, container)
 
     def delete(self, query_str, literals={}, returning=tuple(), container='dict'):
@@ -392,8 +411,12 @@ class table():
         literals (dict): Keys are labels used in update_str. Values are literals to replace the labels.
             NOTE: Literal values for encoded columns must be encoded. See encode_value().
         returning (iter): An iterable of column names to return for each deleted row.
-        container (str): Defines the type of container in the returned list. Set as either 'list', 'tuple'
-            or any other value to return dicts.
+        container (str): Defines the type of container in the returned list. Set as either
+            'tuple': Returns a list(tuple) where tuples are in the order of columns.
+            'list': Returns a list(list) where sub-lists are in the order of columns.
+            'pkdict': Returns a list(dict(dict)) where the first dict is is a dict of primary keys
+                and the second a dict of columns.
+            any other value returns list(dicts) with the specified columns.
 
         Returns
         -------
@@ -403,7 +426,7 @@ class table():
         _returning = self.raw._columns if returning == '*' else list(returning)
         if container == 'pkdict' and returning and self.raw._primary_key not in _returning:
             _returning.append(self.raw._primary_key)
-        retval = self.raw.delete(query_str, literals, returning)
+        retval = self.raw.delete(query_str, literals, _returning)
         return self._return_container(_returning, retval, container)
 
     def arbitrary_sql(self, sql_str, literals={}, read=True, repeatable=False):

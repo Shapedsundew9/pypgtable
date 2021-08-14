@@ -11,8 +11,10 @@ of a single threaded process.
 
 from copy import deepcopy
 from logging import NullHandler, getLogger
+from threading import enumerate, get_ident
 from time import sleep
 
+from obscure_password import unobscure
 from psycopg2 import (InterfaceError, OperationalError, ProgrammingError,
                       connect, errors, sql)
 from psycopg2.extensions import (ISOLATION_LEVEL_DEFAULT,
@@ -41,6 +43,12 @@ register_token_code(
 register_token_code(
     'W04004',
     'Insufficient privileges for user {user} to read maintenance DB {mdb}. Assuming {db} exists.')
+register_token_code(
+    'W04005',
+    'Failed to close connection to database {dbname} on host {host} created by terminated thread {ident}. Error: {error}')
+register_token_code(
+    'W04006',
+    'Failed to close connection to database {dbname} on host {host}. Error: {error}')
 register_token_code(
     'E04000',
     'Transaction cannot complete to database {dbname}. See previous log lines for details.')
@@ -88,12 +96,35 @@ def db_connect(dbname, config):
     -------
     (psycopg2.connection) object with open connection.
     """
-    dbs = _connections.setdefault(config['host'], {})
-    connection = dbs.setdefault(dbname, None)
+    connection = _get_connection(dbname, config['host'])
     if connection is None:
-        connection = _connections[config['host']
-                                  ]['dbname'] = db_reconnect(dbname, config)
+        connection = db_reconnect(dbname, config)
+        _connections[config['host']][dbname][get_ident()] = connection
+        _clean_connections()
     return connection
+
+
+def _get_connection(dbname, host):
+    dbs = _connections.setdefault(host, {})
+    threads = dbs.setdefault(dbname, {})
+    return threads.setdefault(get_ident(), None)
+
+
+def _clean_connections():
+    """If threads no longer exist close any connections they may have had."""
+    idents = [thread.ident for thread in filter(lambda x: x is not None, enumerate())]
+    for host, dbs in _connections.items():
+        for dbname, threads in dbs.items():
+            for ident, connection in tuple(threads.items()):
+                if ident not in idents:
+                    try:
+                        if connection is not None:
+                            connection.close()
+                    except (ProgrammingError, OperationalError, InterfaceError) as e:
+                        _logger.warning(text_token({'W04005': {'host': host, 'dbname': dbname,
+                                                    'ident': ident, 'error': str(e)}}))
+                    else:
+                        del threads[ident]
 
 
 def db_disconnect(dbname, config):
@@ -108,15 +139,15 @@ def db_disconnect(dbname, config):
             'host' (str): Fully qualified host name of the DB server
     }
     """
-    connection = _connections.get(config['host'], {dbname: None})[dbname]
+    connection = _get_connection(dbname, config['host'])
     if connection is not None:
         try:
             connection.close()
-        except (InterfaceError, OperationalError):
-            pass
-        finally:
-            _connections.setdefault(config['host'], {dbname: None})[
-                dbname] = None
+        except (InterfaceError, OperationalError, ProgrammingError) as e:
+            _logger.warning(text_token({'W04006': {'host': config['host'], 'dbname': dbname,
+                                        'error': str(e)}}))
+        else:
+            _connections[config['host']][dbname][get_ident()] = None
 
 
 def db_disconnect_all():
@@ -155,14 +186,14 @@ def db_reconnect(dbname, config):
     -------
     psycopg2.connection object with open connection.
     """
-    connection = _connections.get(config['host'], {dbname: None})[dbname]
+    connection = _get_connection(dbname, config['host'])
     if connection is not None:
         db_disconnect(dbname, config)
     backoff_gen = backoff_generator(
         _INITIAL_DELAY, _BACKOFF_STEPS, _BACKOFF_FUZZ)
     attempts = 0
     connection, error = _connect_core(dbname, config)
-    while connection is None and attempts <= config['retries']:
+    while connection is None and attempts < config['retries']:
         backoff = next(backoff_gen)
         attempts += 1
         _logger.warning(text_token({'W04000': {'attempts': attempts, 'dbname': dbname,
@@ -171,7 +202,7 @@ def db_reconnect(dbname, config):
         connection, error = _connect_core(dbname, config)
     if connection is None:
         raise error
-    _connections.setdefault(config['host'], {})[dbname] = connection
+    _connections[config['host']][dbname][get_ident()] = connection
     return connection
 
 
@@ -202,7 +233,7 @@ def _connect_core(dbname, config):
     err = None
     try:
         connection = connect(host=host, port=port, user=user,
-                             password=password, dbname=dbname, connect_timeout=2)
+                             password=unobscure(password), dbname=dbname, connect_timeout=2)
     except (InterfaceError, OperationalError) as e:
         connection = None
         _logger.warning(text_token({'W04001': {'dbname': dbname,
@@ -346,7 +377,7 @@ def db_transaction(dbname, config, sql_str_iter, read=True, repeatable=False, re
     -------
     list(psycopg2.cursor)
     """
-    token2 = {'rw': ('write', 'read')[read], 'dbname': dbname, 'total': _DB_TRANSACTION_ATTEMPTS}
+    token2 = {'rw': ('write', 'read')[read], 'dbname': dbname, 'total': _DB_TRANSACTION_ATTEMPTS, 'error': None}
     token3 = deepcopy(token2)
     token3['attempts'] = _DB_TRANSACTION_ATTEMPTS
     token3['total'] = recons
@@ -383,4 +414,4 @@ def db_transaction(dbname, config, sql_str_iter, read=True, repeatable=False, re
         _logger.warning(text_token({'W04003': token3}))
         db_reconnect(dbname, config)
     _logger.error(text_token({'E04000': {'dbname': dbname}}))
-    raise e  # noqa: F821
+    raise ProgrammingError
