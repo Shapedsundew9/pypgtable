@@ -254,7 +254,7 @@ class raw_table():
                     for columns, values in self.batch_dict_data(load(file_ptr)):
                         self.insert(columns, values)
 
-    def batch_dict_data(self, data):
+    def batch_dict_data(self, data, exclude=tuple()):
         """Generate to break up an iterable of dictionaries into batches with the same keys.
 
         The order of dictionaries in the iterable is preserved (if it is ordered).
@@ -263,6 +263,7 @@ class raw_table():
         Args
         ----
         data (iter(dict)): Each dict is a subset of a table row.
+        exclude (iter(str)): Iterable of columns to exclude.
 
         Returns
         -------
@@ -271,7 +272,7 @@ class raw_table():
         last_datum_keys = set()
         ordered_keys = tuple()
         current_batch = []
-        set_of_columns = set(self._columns)
+        set_of_columns = set(self._columns) - set(exclude)
         for datum in data:
             datum_keys = set(datum.keys()) & set_of_columns
             if last_datum_keys == set(datum_keys):

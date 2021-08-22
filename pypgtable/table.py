@@ -310,7 +310,7 @@ class table():
         values = self.raw.recursive_select(query_str, literals, _columns, repeatable)
         return self._return_container(_columns, values, container)
 
-    def upsert(self, values_dict, update_str=None, literals={}, returning=tuple(), container='dict'):
+    def upsert(self, values_dict, update_str=None, literals={}, returning=tuple(), container='dict', exclude=tuple()):
         """Upsert values.
 
         If update_str is None each entry will be inserted or replace the existing entry on conflict.
@@ -336,6 +336,7 @@ class table():
             'pkdict': Returns a list(dict(dict)) where the first dict is is a dict of primary keys
                 and the second a dict of columns.
             any other value returns list(dicts) with the specified columns.
+        exclude (iter(str)): Iterable of columns to exclude from insert.
 
         Returns
         -------
@@ -346,20 +347,21 @@ class table():
         if container == 'pkdict' and returning and self.raw._primary_key not in _returning:
             _returning.append(self.raw._primary_key)
         retval = []
-        for columns, values in self.raw.batch_dict_data(values_dict):
+        for columns, values in self.raw.batch_dict_data(values_dict, exclude):
             encoded_values = self.encode_values_to_tuple(columns, values)
             retval.extend(self.raw.upsert(columns, encoded_values, update_str, literals, _returning))
         return self._return_container(_returning, retval, container)
 
-    def insert(self, values_dict):
+    def insert(self, values_dict, exclude=tuple()):
         """Insert values.
 
         Args
         ----
         values_dict (iter(dict)): Keys are column names. Values will be encoded by the registered conversion
             function (if any).
+        exclude (iter(str)): Iterable of columns to exclude.
         """
-        for columns, values in self.raw.batch_dict_data(values_dict):
+        for columns, values in self.raw.batch_dict_data(values_dict, exclude):
             encoded_values = self.encode_values_to_tuple(columns, values)
             self.raw.insert(columns, encoded_values)
 
