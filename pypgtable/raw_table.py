@@ -428,7 +428,7 @@ class raw_table():
     def _create_indices(self):
         """Create an index for columns that specify one."""
         for column, definition in filter(lambda x: 'index' in x[1], self.config['schema'].items()):
-            sql_str = _TABLE_INDEX_SQL.format(sql.Identifier(column + "_index"), self._table)
+            sql_str = _TABLE_INDEX_SQL.format(sql.Identifier(self.config['table'] + '_' + column + "_index"), self._table)
             sql_str += sql.SQL(" USING ") + sql.Identifier(definition['index'])
             sql_str += _TABLE_INDEX_COLUMN_SQL.format(sql.Identifier(column))
             _logger.info(text_token({'I05000': {'sql': self._sql_to_string(sql_str)}}))
@@ -442,8 +442,6 @@ class raw_table():
             self._db_transaction((sql_str,), read=False)
 
     def _sql_queries_transaction(self, sql_str_list, repeatable=False):
-        if _logit():
-            _logger.debug(text_token({'I05000': {'sql': '\n'.join([self._sql_to_string(s) for s in sql_str_list])}}))
         cursors = self._db_transaction(sql_str_list, repeatable)
         data = tuple((dbcur.fetchall() for dbcur in cursors))
         for cursor in cursors:
