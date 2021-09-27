@@ -92,6 +92,8 @@ _TABLE_UPDATE_SQL = sql.SQL("UPDATE {0} SET {1} WHERE {2}")
 _TABLE_DELETE_SQL = sql.SQL("DELETE FROM {0} WHERE {1}")
 _TABLE_RETURNING_SQL = sql.SQL(" RETURNING ")
 _DEFAULT_UPDATE_STR = "{{{0}}}={{EXCLUDED.{0}}}"
+_SQL_TUPLE_FILTER = lambda x: isinstance(x[1], tuple) and not x[1]
+_SQL_EMPTY_TUPLE = (None,)
 
 
 def default_config():
@@ -124,6 +126,7 @@ class raw_table():
         self.populate = populate
         self._table = sql.Identifier(self.config['table'])
         self._pm, self._pm_columns, self._pm_sql = self._ptr_map_def()
+        self._expand_empty_tuple = self.config['expand_empty_tuple']
         if self.config['delete_db']:
             self.delete_db()
         if not self._db_exists() and self.config['create_db']:
@@ -527,6 +530,13 @@ class raw_table():
         if dupes:
             raise ValueError("Literals cannot have keys that are the names of table columns:{}".format(dupes))
         format_dict = {k: sql.Identifier(k) for k in self._columns}
+
+        # There is an irritating corner of SQL where 'x IN ()' is a syntax error.
+        # 'x in (null)' will return null which is effectively False in a WHERE clause
+        # so we look for empty literal tuples and replace them with (None,)
+        if self._expand_empty_tuple:
+            for k, v in filter(_SQL_TUPLE_FILTER, literals.items()):
+                literals[k] = _SQL_EMPTY_TUPLE
         format_dict.update({k: sql.Literal(v) for k, v in literals.items()})
         return format_dict
 
