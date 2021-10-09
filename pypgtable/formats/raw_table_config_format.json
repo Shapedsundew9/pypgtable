@@ -125,12 +125,5 @@
             "minlength": 3,
             "maxlength": 3
         }
-    },
-    "expand_empty_tuple": {
-        "type": "boolean",
-        "default": "false",
-        "meta": {
-            "description": "All empty tuple literals will be expanded to (None,) if set to True. This will prevent SQL syntax errors but the change in behaviour must be accounted for in the SQL expression. See documentation."
-        }
     }
 }

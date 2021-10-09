@@ -334,99 +334,32 @@ def test_db_transaction_p0(monkeypatch):
 
     class mock_connection():
         def __init__(self) -> None: self.value = next(mock_connection_ref)
-        def cursor(self): return mock_cursor()
+        def cursor(self, *args, **kwargs): return mock_cursor()
         def close(self): self.value = None
 
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
-    dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", ))
-    assert len(dbcur_list) == 1
-    assert not dbcur_list[0].fetchone()
+    dbcur = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", ))
+    assert not dbcur.fetchone()
 
 
 def test_db_transaction_p1(monkeypatch):
-    """Execute multiple read-only SQL statements.
-
-    A cursor for each SQL statement should be returned in the order
-    the statement were submitted.
-    """
-    db_disconnect_all()
-    mock_connection_ref = sequential_reference()
-    mock_cursor_ref = sequential_reference()
-
-    class mock_cursor():
-        def __init__(self) -> None: self.value = next(mock_cursor_ref)
-        def execute(self, sql_str): pass
-        def fetchone(self): return self.value
-
-    class mock_connection():
-        def __init__(self) -> None: self.value = next(mock_connection_ref)
-        def cursor(self): return mock_cursor()
-        def close(self): self.value = None
-
-    def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(database, 'connect', mock_connect)
-    dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"))
-    assert len(dbcur_list) == 3
-    assert dbcur_list[0].fetchone() == 0
-    assert dbcur_list[1].fetchone() == 1
-    assert dbcur_list[2].fetchone() == 2
-
-
-def test_db_transaction_p2(monkeypatch):
-    """Test that the isolation level is correctly set and cleared."""
-    db_disconnect_all()
-    mock_connection_ref = sequential_reference()
-    mock_cursor_ref = sequential_reference()
-
-    class mock_cursor():
-        def __init__(self) -> None: self.value = next(mock_cursor_ref)
-        def execute(self, sql_str): pass
-        def fetchone(self): return self.value
-
-    class mock_connection():
-        def __init__(self) -> None:
-            self.value = next(mock_connection_ref)
-            self.isolation_level = ISOLATION_LEVEL_DEFAULT
-
-        def close(self): self.value = None
-
-        def cursor(self):
-            assert self.isolation_level == ISOLATION_LEVEL_REPEATABLE_READ
-            return mock_cursor()
-
-        def set_session(
-            self, isolation_level): self.isolation_level = isolation_level
-
-    def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(database, 'connect', mock_connect)
-    dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"), repeatable=True)
-    assert len(dbcur_list) == 3
-    assert dbcur_list[0].fetchone() == 0
-    assert dbcur_list[1].fetchone() == 1
-    assert dbcur_list[2].fetchone() == 2
-    assert db_connect(_MOCK_DBNAME, _MOCK_CONFIG).isolation_level == ISOLATION_LEVEL_DEFAULT
-
-
-def test_db_transaction_p3(monkeypatch):
     """Test that a write transaction is committed."""
     db_disconnect_all()
-    mock_connection_ref = sequential_reference()
-    mock_cursor_ref = sequential_reference()
 
     class mock_cursor():
-        def __init__(self) -> None: self.value = next(mock_cursor_ref)
+        def __init__(self) -> None: self.value = 2
         def execute(self, sql_str): pass
         def fetchone(self): return self.value
 
     class mock_connection():
         def __init__(self) -> None:
-            self.value = next(mock_connection_ref)
+            self.value = 2
             self.committed = False
 
         def close(self): self.value = None
 
-        def cursor(self):
+        def cursor(self, *args, **kwargs):
             self.committed = False
             return mock_cursor()
 
@@ -434,187 +367,9 @@ def test_db_transaction_p3(monkeypatch):
 
     def mock_connect(*args, **kwargs): return mock_connection()
     monkeypatch.setattr(database, 'connect', mock_connect)
-    dbcur_list = db_transaction(
-        _MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"), read=False)
-    assert len(dbcur_list) == 3
-    assert dbcur_list[0].fetchone() == 0
-    assert dbcur_list[1].fetchone() == 1
-    assert dbcur_list[2].fetchone() == 2
+    dbcur = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, "SQL0", read=False)
+    assert dbcur.fetchone() == 2
     assert db_connect(_MOCK_DBNAME, _MOCK_CONFIG).commit
-
-
-def test_db_transaction_n0(monkeypatch):
-    """Raise an OperationalError on the 2nd of 3 read SQL statements.
-
-    A cursor for each SQL statement should be returned in the order
-    the statement were submitted.
-
-    0. The first statement execution will be discarded
-    1. The second statement execution will produce no results (OperationalError)
-    2. The first statement will be re-executed
-    3. The second statement will be re-executed
-    4. The third statement will be executed
-
-    Should get 3 cursors with the values 2, 3 & 4
-    """
-    db_disconnect_all()
-    mock_connection_ref = sequential_reference()
-    mock_cursor_ref = sequential_reference()
-
-    class mock_cursor():
-        def __init__(self) -> None: self.value = next(mock_cursor_ref)
-
-        def execute(self, sql_str):
-            if self.value == 1:
-                raise OperationalError
-
-        def fetchone(self): return self.value
-
-    class mock_connection():
-        def __init__(self) -> None: self.value = next(mock_connection_ref)
-        def cursor(self): return mock_cursor()
-        def close(self): self.value = None
-
-    def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(database, 'connect', mock_connect)
-    dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"))
-    assert len(dbcur_list) == 3
-    assert dbcur_list[0].fetchone() == 2
-    assert dbcur_list[1].fetchone() == 3
-    assert dbcur_list[2].fetchone() == 4
-
-
-def test_db_transaction_n1(monkeypatch):
-    """Raise _DB_TRANSACTION_ATTEMPTS OperationalErrors to force a reconnection.
-
-    A cursor for each SQL statement should be returned in the order
-    the statement were submitted.
-
-    0. The first statement execution produce no results _DB_TRANSACTION_ATTEMPTS times (OperationalError)
-    1. A reconnection will occur
-    2. The first statement will be re-executed
-    3. The second statement will be executed
-    4. The third statement will be executed
-
-    Should get 3 cursors with the values _DB_TRANSACTION_ATTEMPTS, _DB_TRANSACTION_ATTEMPTS+1, & _DB_TRANSACTION_ATTEMPTS+2
-    The next mock_connection_ref should be 2
-    """
-    db_disconnect_all()
-    mock_connection_ref = sequential_reference()
-    mock_cursor_ref = sequential_reference()
-
-    class mock_cursor():
-        def __init__(self) -> None: self.value = next(mock_cursor_ref)
-
-        def execute(self, sql_str):
-            if self.value < _DB_TRANSACTION_ATTEMPTS:
-                raise OperationalError
-
-        def fetchone(self): return self.value
-
-    class mock_connection():
-        def __init__(self) -> None: self.value = next(mock_connection_ref)
-        def cursor(self): return mock_cursor()
-        def close(self): self.value = None
-
-    def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(database, 'connect', mock_connect)
-    dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"))
-    assert len(dbcur_list) == 3
-    assert dbcur_list[0].fetchone() == _DB_TRANSACTION_ATTEMPTS
-    assert dbcur_list[1].fetchone() == _DB_TRANSACTION_ATTEMPTS + 1
-    assert dbcur_list[2].fetchone() == _DB_TRANSACTION_ATTEMPTS + 2
-    assert next(mock_connection_ref) == 2
-
-
-def test_db_transaction_n2(monkeypatch):
-    """Test that a write transaction with an error is rolled back & re-attempted."""
-    db_disconnect_all()
-    mock_connection_ref = sequential_reference()
-    mock_cursor_ref = sequential_reference()
-
-    class mock_cursor():
-        def __init__(self) -> None: self.value = next(mock_cursor_ref)
-
-        def execute(self, sql_str):
-            if self.value == 1:
-                raise OperationalError
-
-        def fetchone(self): return self.value
-
-    class mock_connection():
-        def __init__(self) -> None:
-            self.value = next(mock_connection_ref)
-            self.isolation_level = ISOLATION_LEVEL_DEFAULT
-            self.committed = False
-            self.rolledback = False
-
-        def close(self): self.value = None
-        def cursor(self): return mock_cursor()
-        def commit(self): self.committed = True
-        def rollback(self): self.rolledback = True
-
-    def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(database, 'connect', mock_connect)
-    dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"), read=False)
-    assert len(dbcur_list) == 3
-    assert dbcur_list[0].fetchone() == 2
-    assert dbcur_list[1].fetchone() == 3
-    assert dbcur_list[2].fetchone() == 4
-    assert db_connect(_MOCK_DBNAME, _MOCK_CONFIG).commit
-    assert db_connect(_MOCK_DBNAME, _MOCK_CONFIG).rolledback
-
-
-def test_db_transaction_n3(monkeypatch):
-    """Raise an OperationalError on the 2nd of 3 repeatable read SQL statements.
-
-    A cursor for each SQL statement should be returned in the order
-    the statement were submitted.
-
-    0. The first statement execution will be discarded
-    1. The second statement execution will produce no results (OperationalError)
-    2. The first statement will be re-executed
-    3. The second statement will be re-executed
-    4. The third statement will be executed
-
-    Isolation should be reset on the OperationalError and then set again on
-    the re-try.
-    """
-    db_disconnect_all()
-    mock_connection_ref = sequential_reference()
-    mock_cursor_ref = sequential_reference()
-
-    class mock_cursor():
-        def __init__(self) -> None: self.value = next(mock_cursor_ref)
-
-        def execute(self, sql_str):
-            if self.value == 1:
-                raise OperationalError
-
-        def fetchone(self): return self.value
-
-    class mock_connection():
-        def __init__(self) -> None:
-            self.value = next(mock_connection_ref)
-            self.isolation_level = ISOLATION_LEVEL_DEFAULT
-
-        def close(self): self.value = None
-
-        def cursor(self):
-            assert self.isolation_level == ISOLATION_LEVEL_REPEATABLE_READ
-            return mock_cursor()
-
-        def set_session(self, isolation_level):
-            assert self.isolation_level != isolation_level
-            self.isolation_level = isolation_level
-
-    def mock_connect(*args, **kwargs): return mock_connection()
-    monkeypatch.setattr(database, 'connect', mock_connect)
-    dbcur_list = db_transaction(_MOCK_DBNAME, _MOCK_CONFIG, ("SQL0", "SQL1", "SQL2"), repeatable=True)
-    assert len(dbcur_list) == 3
-    assert dbcur_list[0].fetchone() == 2
-    assert dbcur_list[1].fetchone() == 3
-    assert dbcur_list[2].fetchone() == 4
 
 
 def test_db_transaction_n4(monkeypatch):
@@ -631,16 +386,21 @@ def test_db_exists_p0(monkeypatch):
     """Test the case when the DB exists."""
     db_disconnect_all()
     mock_connection_ref = sequential_reference()
-    mock_cursor_ref = sequential_reference()
 
     class mock_cursor():
-        def __init__(self) -> None: self.value = next(mock_cursor_ref)
+        def __init__(self) -> None: self.value = (_MOCK_DBNAME,)
+        def __iter__(self): return self
+        def __next__(self):
+            if self.value is not None:
+                tmp = self.value
+                self.value = None
+                return tmp
+            raise StopIteration
         def execute(self, sql_str): pass
-        def fetchall(self): return ((_MOCK_DBNAME,),)
 
     class mock_connection():
         def __init__(self) -> None: self.value = next(mock_connection_ref)
-        def cursor(self): return mock_cursor()
+        def cursor(self, *args, **kwargs): return mock_cursor()
         def close(self): self.value = None
 
     def mock_connect(*args, **kwargs): return mock_connection()
@@ -657,13 +417,19 @@ def test_db_exists_p1(monkeypatch):
     mock_cursor_ref = sequential_reference()
 
     class mock_cursor():
-        def __init__(self) -> None: self.value = next(mock_cursor_ref)
+        def __init__(self) -> None: self.value = (_MOCK_DBNAME,)
+        def __iter__(self): return self
+        def __next__(self):
+            if self.value is not None:
+                tmp = self.value
+                self.value = None
+                return tmp
+            raise StopIteration
         def execute(self, sql_str): pass
-        def fetchall(self): return ((_MOCK_DBNAME,),)
 
     class mock_connection():
         def __init__(self) -> None: self.value = next(mock_connection_ref)
-        def cursor(self): return mock_cursor()
+        def cursor(self, *args, **kwargs): return mock_cursor()
         def close(self): self.value = None
 
     def mock_connect(*args, **kwargs): return mock_connection()
@@ -715,7 +481,7 @@ def test_db_create_p0(monkeypatch):
             self.value = next(mock_connection_ref)
             self.autocommit = False
 
-        def cursor(self): return mock_cursor()
+        def cursor(self, *args, **kwargs): return mock_cursor()
         def commit(self): pass
         def close(self): self.value = None
 
@@ -741,7 +507,7 @@ def test_db_delete_p0(monkeypatch):
             self.value = next(mock_connection_ref)
             self.autocommit = False
 
-        def cursor(self): return mock_cursor()
+        def cursor(self, *args, **kwargs): return mock_cursor()
         def commit(self): pass
         def close(self): self.value = None
 

@@ -11,14 +11,19 @@ of a single threaded process.
 
 from copy import deepcopy
 from logging import NullHandler, getLogger
-from threading import enumerate, get_ident
+from threading import get_ident
+from threading import enumerate as thread_enumerate
 from time import sleep
+from random import choice
+from string import ascii_letters
 
 from obscure_password import unobscure
 from psycopg2 import (InterfaceError, OperationalError, ProgrammingError,
                       connect, errors, sql)
 from psycopg2.extensions import (ISOLATION_LEVEL_DEFAULT,
                                  ISOLATION_LEVEL_REPEATABLE_READ)
+from psycopg2.extensions import cursor as TupleCursor
+from psycopg2.extras import NamedTupleCursor, DictCursor
 
 from .common import backoff_generator
 from .utils.text_token import register_token_code, text_token
@@ -66,6 +71,17 @@ register_token_code(
     'Database {dbname} with config {config} deleted.')
 
 
+def cursor_name_generator():
+    """Generate a unique name for every cursor."""
+    count = 0
+    while True:
+        yield _CURSOR_NAME_PREFIX + str(count)
+        count += 1
+
+
+_CURSOR_NAME = cursor_name_generator()
+_ITERSIZE = 10000
+_CURSOR_NAME_PREFIX = ''.join(choice(ascii_letters) for i in range(8)) + '_'
 _INITIAL_DELAY = 0.125
 _BACKOFF_STEPS = 13
 _BACKOFF_FUZZ = True
@@ -74,6 +90,11 @@ _DB_RECONNECTIONS = 3
 _DB_EXISTS_SQL = sql.SQL("SELECT datname FROM pg_database")
 _DB_CREATE_SQL = sql.SQL("CREATE DATABASE {}")
 _DB_DELETE_SQL = sql.SQL("DROP DATABASE IF EXISTS {}")
+_CTYPE = {
+    'tuple': TupleCursor,
+    'namedtuple': NamedTupleCursor,
+    'dict': DictCursor
+}
 
 
 def db_connect(dbname, config):
@@ -112,7 +133,7 @@ def _get_connection(dbname, host):
 
 def _clean_connections():
     """If threads no longer exist close any connections they may have had."""
-    idents = [thread.ident for thread in filter(lambda x: x is not None, enumerate())]
+    idents = [thread.ident for thread in filter(lambda x: x is not None, thread_enumerate())]
     for host, dbs in _connections.items():
         for dbname, threads in dbs.items():
             for ident, connection in tuple(threads.items()):
@@ -279,8 +300,7 @@ def db_exists(dbname, config):
             return True
         raise e
     _logger.info(_DB_EXISTS_SQL.as_string(connection))
-    retval = (dbname,) in db_transaction(
-        config['maintenance_db'], config, (_DB_EXISTS_SQL,))[0].fetchall()
+    retval = (dbname,) in db_transaction(config['maintenance_db'], config, _DB_EXISTS_SQL)
     _logger.info(text_token({'I04001': {'dbname': config['maintenance_db'], 'config': config,
                                         'exists': ('DOES NOT', 'DOES')[retval]}}))
     db_disconnect(config['maintenance_db'], config)
@@ -308,7 +328,7 @@ def db_create(dbname, config):
     connection = db_connect(config['maintenance_db'], config)
     connection.autocommit = True
     _logger.info(sql_str.as_string(connection))
-    db_transaction(config['maintenance_db'], config, (sql_str,), read=False, recons=1)
+    db_transaction(config['maintenance_db'], config, sql_str, read=False, recons=1)
     _logger.info(text_token(
         {'I04002': {'dbname': config['maintenance_db'], 'config': config}}))
     db_disconnect(config['maintenance_db'], config)
@@ -336,12 +356,12 @@ def db_delete(dbname, config):
     connection = db_connect(config['maintenance_db'], config)
     connection.autocommit = True
     _logger.info(sql_str.as_string(connection))
-    db_transaction(config['maintenance_db'], config, (sql_str,), read=False, recons=1)
+    db_transaction(config['maintenance_db'], config, sql_str, read=False, recons=1)
     _logger.info(text_token({'I04003': {'dbname': dbname, 'config': config}}))
     db_disconnect(config['maintenance_db'], config)
 
 
-def db_transaction(dbname, config, sql_str_iter, read=True, repeatable=False, recons=_DB_RECONNECTIONS):
+def db_transaction(dbname, config, sql_str, read=True, recons=_DB_RECONNECTIONS, ctype='tuple'):
     """Execute SQL statements.
 
     SQL statements must either be all read or all write as defined by the read argument.
@@ -368,7 +388,7 @@ def db_transaction(dbname, config, sql_str_iter, read=True, repeatable=False, re
             'user' (str): Username to login with
             'password' (str): Password to login with
     }
-    sql_str_iter (iterable(sql)): An iterable of valid SQL strings.
+    sql_str (sql): A valid SQL string.
     read (bool): If False transaction will be committed.
     repeatable (bool): If True read transaction is done with repeatable read isolation.
     recons (int): >= 1. The number of reconnection attempts before erroring out.
@@ -382,34 +402,29 @@ def db_transaction(dbname, config, sql_str_iter, read=True, repeatable=False, re
     token3['attempts'] = _DB_TRANSACTION_ATTEMPTS
     token3['total'] = recons
     backoff_gen = backoff_generator(_INITIAL_DELAY, _BACKOFF_STEPS, _BACKOFF_FUZZ)
+    cursor_type = _CTYPE[ctype]
     for reconnection in range(1, recons + 1):
         for transaction_attempt in range(1, _DB_TRANSACTION_ATTEMPTS + 1):
             token2['attempt'] = transaction_attempt
             connection = db_connect(dbname, config)
-            if read and repeatable:
-                connection.set_session(isolation_level=ISOLATION_LEVEL_REPEATABLE_READ)
-            dbcur_list = []
-            for sql_str in sql_str_iter:
-                dbcur_list.append(connection.cursor())
-                try:
-                    dbcur_list[-1].execute(sql_str)
-                except (InterfaceError, OperationalError) as e:
-                    if not read:
-                        connection.rollback()
-                    token2['code'] = e.pgcode
-                    token2['error'] = e
-                    _logger.warning(text_token({'W04002': token2}))
-                    sleep(next(backoff_gen))
-                    dbcur_list.clear()
-                    if read and repeatable:
-                        connection.set_session(isolation_level=ISOLATION_LEVEL_DEFAULT)
-                    break
-            if dbcur_list:
+            if read:
+                cursor = connection.cursor(name=next(_CURSOR_NAME), cursor_factory=cursor_type)
+                cursor.itersize = _ITERSIZE
+            else:
+                cursor = connection.cursor(cursor_factory=cursor_type)
+            try:
+                cursor.execute(sql_str)
+            except (InterfaceError, OperationalError) as e:
                 if not read:
-                    connection.commit()
-                if read and repeatable:
-                    connection.set_session(isolation_level=ISOLATION_LEVEL_DEFAULT)
-                return dbcur_list
+                    connection.rollback()
+                token2['code'] = e.pgcode
+                token2['error'] = e
+                _logger.warning(text_token({'W04002': token2}))
+                sleep(next(backoff_gen))
+                break
+            if not read:
+                connection.commit()
+            return cursor
         token3['reconnection'] = reconnection
         _logger.warning(text_token({'W04003': token3}))
         db_reconnect(dbname, config)

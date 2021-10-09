@@ -108,7 +108,12 @@ def test_getitem_encoded_pk2():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = _register_conversions(table(config))
-    assert t[0] == {}
+    try:
+        t[0]
+    except KeyError:
+        pass
+    else:
+        assert False
 
 
 def test_getitem_pk1():
@@ -127,7 +132,12 @@ def test_getitem_pk2():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
-    assert t[1000] == {}
+    try:
+        t[1000]
+    except KeyError:
+        pass
+    else:
+        assert False
 
 
 def test_getitem_no_pk():
@@ -158,7 +168,7 @@ def test_setitem_encoded_pk():
     t[22] = setitem
     result = t[22]
     raw_result = dict(
-        zip(t.raw._columns, t.raw.select('WHERE {id} = -978')[0]))
+        zip(t.raw._columns, next(t.raw.select('WHERE {id} = -978'))))
     assert all([expected_decoded[k] == result[k] for k in expected_decoded])
     assert all([expected_raw[k] == raw_result[k] for k in expected_raw])
 
@@ -176,7 +186,7 @@ def test_setitem_pk():
                     "uid": 122, "metadata": [34, 78], "name": "rOoT"}
     t[22] = setitem
     result = t[22]
-    raw_result = dict(zip(t.raw._columns, t.raw.select('WHERE {id} = 22')[0]))
+    raw_result = dict(zip(t.raw._columns, next(t.raw.select('WHERE {id} = 22'))))
     assert all([expected_decoded[k] == result[k] for k in expected_decoded])
     assert all([expected_raw[k] == raw_result[k] for k in expected_raw])
 
@@ -194,30 +204,15 @@ def test_setitem_mismatch_pk():
                     "uid": 122, "metadata": [34, 78], "name": "rOoT"}
     t[28] = setitem
     result = t[28]
-    raw_result = dict(zip(t.raw._columns, t.raw.select('WHERE {id} = 28')[0]))
+    raw_result = dict(zip(t.raw._columns, next(t.raw.select('WHERE {id} = 28'))))
     assert all([expected_decoded[k] == result[k] for k in expected_decoded])
     assert all([expected_raw[k] == raw_result[k] for k in expected_raw])
-    assert t[22] == {}
-
-
-def test_select_dict():
-    """Validate select returning a dict."""
-    _logger.debug(stack()[0][3])
-    config = deepcopy(_CONFIG)
-    t = table(config)
-    data = t.select('WHERE {id} = {seven}', {'seven': 7},
-                    columns=('uid', 'left', 'right'), container='pkdict')
-    assert data == {7: {'id': 7, 'uid': 107, 'left': 13, 'right': None}}
-
-
-def test_select_list():
-    """Validate select returning a list."""
-    _logger.debug(stack()[0][3])
-    config = deepcopy(_CONFIG)
-    t = table(config)
-    data = t.select('WHERE {id} = {seven}', {'seven': 7}, columns=(
-        'uid', 'left', 'right'), container='list')
-    assert data == [[107, 13, None]]
+    try:
+        t[22]
+    except KeyError:
+        pass
+    else:
+        assert False
 
 
 def test_select_tuple():
@@ -225,9 +220,19 @@ def test_select_tuple():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
-    data = t.select('WHERE {id} = {seven}', {'seven': 7}, columns=(
-        'uid', 'left', 'right'), container='tuple')
+    data = list(t.select('WHERE {id} = {seven}', {'seven': 7}, columns=(
+        'uid', 'left', 'right'), container='tuple'))
     assert data == [(107, 13, None)]
+
+
+def test_select_dict():
+    """Validate select returning a dict."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    t = table(config)
+    data = list(t.select('WHERE {id} = {seven}', {'seven': 7}, columns=(
+        'uid', 'left', 'right'), container='dict'))
+    assert data == [{'uid': 107, 'left': 13, 'right': None}]
 
 
 def test_select_all_columns():
@@ -235,7 +240,7 @@ def test_select_all_columns():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
-    data = t.select(container='tuple')
+    data = tuple(t.select(container='tuple'))
     assert len(data[0]) == len(t.columns())
 
 
@@ -244,8 +249,8 @@ def test_recursive_select():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
-    data = t.recursive_select('WHERE {id} = 2', columns=(
-        'id', 'uid', 'left', 'right'), container='tuple')
+    data = list(t.recursive_select('WHERE {id} = 2', columns=(
+        'id', 'uid', 'left', 'right'), container='tuple'))
     assert data == [(2, 102, 5, 6), (5, 105, 10, 11), (6, 106, None, 12),
                     (10, 110, None, None), (11, 111, None, None), (12, 112, None, None)]
 
@@ -255,7 +260,7 @@ def test_recursive_select_no_pk():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
-    data = t.recursive_select('WHERE {id} = 2', columns=('uid', 'left', 'right'), container='pkdict')
+    data = tuple(t.recursive_select('WHERE {id} = 2', columns=('uid', 'left', 'right'), container='pkdict'))
     assert len(data)
 
 
@@ -273,8 +278,8 @@ def test_upsert():
                          'temp': '_temp'}, ('uid', 'id', 'name'), container='tuple')
     row = t.select('WHERE {id} = 0', columns=(
         'id', 'left', 'right', 'uid', 'metadata', 'name'), container='tuple')
-    assert returning == [(901, 91, 'Harry'), (100, 0, 'Diana_temp')]
-    assert row == [(0, 1, 2, 100, None, "Diana_temp")]
+    assert list(returning) == [(901, 91, 'Harry'), (100, 0, 'Diana_temp')]
+    assert list(row) == [(0, 1, 2, 100, None, "Diana_temp")]
 
 
 def test_upsert_no_pk():
@@ -287,10 +292,10 @@ def test_upsert_no_pk():
             'metadata': [1, 2], 'name': 'Harry'},
         {'id': 0, 'left': 1, 'right': 2, 'uid': 201, 'metadata': [], 'name': 'Diana'}
     )
-    returning = t.upsert(data, '{name}={EXCLUDED.name} || {temp}', {
-                         'temp': '_temp'}, ('uid', 'name'), container='pkdict')
-    row = t.select('WHERE {id} = 0', columns=(
-        'id', 'left', 'right', 'uid', 'metadata', 'name'), container='tuple')
+    returning = tuple(t.upsert(data, '{name}={EXCLUDED.name} || {temp}', {
+                         'temp': '_temp'}, ('uid', 'name'), container='invalid_so_dict'))
+    row = list(t.select('WHERE {id} = 0', columns=(
+        'id', 'left', 'right', 'uid', 'metadata', 'name'), container='tuple'))
     assert len(returning) == 2 and isinstance(returning[0], dict)
     assert row == [(0, 1, 2, 100, None, "Diana_temp")]
 
@@ -308,7 +313,7 @@ def test_insert():
             'metadata': [], 'name': 'William'}
     ]
     t.insert(data)
-    results = t.select('WHERE {id} > 90 ORDER BY {id} ASC', columns=columns)
+    results = list(t.select('WHERE {id} > 90 ORDER BY {id} ASC', columns=columns))
     assert data == results
 
 
@@ -318,50 +323,37 @@ def test_update():
     config = deepcopy(_CONFIG)
     t = table(config)
     returning = t.update('{name}={name} || {new}', '{id}={qid}', {
-                         'qid': 0, 'new': '_new'}, ('id', 'name'), container='pkdict')
+                         'qid': 0, 'new': '_new'}, ('id', 'name'), container='dict')
     row = t.select('WHERE {id} = 0', columns=(
         'id', 'left', 'right', 'uid', 'metadata', 'name'), container='tuple')
-    assert returning == {0: {'id': 0, 'name': 'root_new'}}
-    assert row == [(0, 1, 2, 100, None, "root_new")]
-
-
-def test_update_no_pk():
-    """Validate an update returning a pkdict without specifying the primary key."""
-    _logger.debug(stack()[0][3])
-    config = deepcopy(_CONFIG)
-    t = table(config)
-    returning = t.update('{name}={name} || {new}', '{id}={qid}', {
-                         'qid': 0, 'new': '_new'}, ('name',), container='pkdict')
-    row = t.select('WHERE {id} = 0', columns=(
-        'id', 'left', 'right', 'uid', 'metadata', 'name'), container='tuple')
-    assert returning == {0: {'id': 0, 'name': 'root_new'}}
-    assert row == [(0, 1, 2, 100, None, "root_new")]
+    assert list(returning) == [{'id': 0, 'name': 'root_new'}]
+    assert list(row) == [(0, 1, 2, 100, None, "root_new")]
 
 
 def test_delete():
-    """Validate a delete returning a list."""
+    """Validate a delete returning a tuple."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
     returning = t.delete('{id}={target}', {'target': 7},
-                         ('uid', 'id'), container='list')
+                         ('uid', 'id'), container='tuple')
     row = t.select('WHERE {id} = 7', columns=(
         'id', 'left', 'right', 'uid', 'metadata', 'name'))
-    assert returning == [[107, 7]]
-    assert row == []
+    assert list(returning) == [(107, 7)]
+    assert list(row) == []
 
 
 def test_delete_no_pk():
-    """Validate a delete returning a pkdict without specifying the primary key."""
+    """Validate a delete returning a dict without."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
-    returning = t.delete('{id}={target}', {'target': 7},
-                         ('uid',), container='pkdict')
+    returning = list(t.delete('{id}={target}', {'target': 7},
+                         ('uid',), container='pkdict'))
     row = t.select('WHERE {id} = 7', columns=(
         'id', 'left', 'right', 'uid', 'metadata', 'name'))
     assert len(returning) == 1
-    assert row == []
+    assert list(row) == []
 
 
 def test_discover_table():
@@ -384,12 +376,12 @@ def test_discover_table():
     t1.insert(values_dict)
     t2 = table({'database': _CONFIG['database'], 'table': _CONFIG['table']})
     data = t2.select(columns=values_dict[0].keys())
-    assert data == values_dict
+    assert list(data) == values_dict
     values_dict.append({'id': 0, 'left': 1, 'right': 2, 'uid': 201,
                         'metadata': [], 'name': 'Diana'})
     t2.insert([values_dict[-1]])
     data = t1.select(columns=values_dict[0].keys())
-    assert data == values_dict
+    assert list(data) == values_dict
 
 
 def test_arbitrary_sql():
@@ -397,5 +389,5 @@ def test_arbitrary_sql():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = table(config)
-    result = t.arbitrary_sql('SELECT 2.0::REAL * 3.0::REAL')[0][0]
+    result = next(t.raw.arbitrary_sql('SELECT 2.0::REAL * 3.0::REAL'))[0]
     assert result == approx(6.0)

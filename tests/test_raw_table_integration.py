@@ -136,10 +136,10 @@ def test_create_table_error_1(monkeypatch):
     rt = raw_table(_CONFIG)
     config = deepcopy(rt.config)
 
-    def mock_db_transaction(self, sql_str_iter, read=True, repeatable=False):
-        if 'CREATE TABLE ' in self._sql_to_string(sql_str_iter[0]):
+    def mock_db_transaction(self, sql_str, read=True, ctype='tuple'):
+        if 'CREATE TABLE ' in self._sql_to_string(sql_str):
             raise ProgrammingError
-        return db_transaction(config['database']['dbname'], config['database'], sql_str_iter, read, repeatable)
+        return db_transaction(config['database']['dbname'], config['database'], sql_str, read, ctype=ctype)
 
     monkeypatch.setattr(raw_table, '_db_transaction', mock_db_transaction)
     try:
@@ -156,11 +156,11 @@ def test_create_table_error_2(monkeypatch):
     rt = raw_table(_CONFIG)
     config = deepcopy(rt.config)
 
-    def mock_db_transaction(self, sql_str_iter, read=True, repeatable=False):
-        if 'CREATE TABLE ' in self._sql_to_string(sql_str_iter[0]):
+    def mock_db_transaction(self, sql_str, read=True, ctype='tuple'):
+        if 'CREATE TABLE ' in self._sql_to_string(sql_str):
             monkeypatch.setattr(ProgrammingError, 'pgcode', errors.DuplicateTable)
             raise ProgrammingError
-        return db_transaction(config['database']['dbname'], config['database'], sql_str_iter, read, repeatable)
+        return db_transaction(config['database']['dbname'], config['database'], sql_str, read, ctype=ctype)
 
     def mock_table_definition(self):
         return []
@@ -244,7 +244,7 @@ def test_select_1():
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
     data = rt.select('WHERE {id} = {seven}', {'seven': 7}, columns=('uid', 'left', 'right'))
-    assert data == [(107, 13, None)]
+    assert list(data) == [(107, 13, None)]
 
 
 def test_select_2():
@@ -253,7 +253,7 @@ def test_select_2():
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
     data = rt.select('WHERE {id} = {seven}', {'seven': 7}, columns='{uid}, {left}, {right}')
-    assert data == [(107, 13, None)]
+    assert list(data) == [(107, 13, None)]
 
 
 def test_literals_error():
@@ -275,7 +275,7 @@ def test_recursive_select_1():
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
     data = rt.recursive_select('WHERE {id} = 2', columns=('id', 'uid', 'left', 'right'))
-    assert data == [(2, 102, 5, 6), (5, 105, 10, 11), (6, 106, None, 12),
+    assert list(data) == [(2, 102, 5, 6), (5, 105, 10, 11), (6, 106, None, 12),
                     (10, 110, None, None), (11, 111, None, None), (12, 112, None, None)]
 
 
@@ -285,7 +285,7 @@ def test_recursive_select_2():
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
     data = rt.recursive_select('WHERE {id} = 2')
-    assert len(data) == 6
+    assert len(tuple(data)) == 6
 
 
 def test_recursive_select_no_ptr():
@@ -294,7 +294,7 @@ def test_recursive_select_no_ptr():
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
     data = rt.recursive_select('WHERE {id} = 2', columns=('id', 'uid', 'left'))
-    assert data == [(2, 102, 5, 6), (5, 105, 10, 11), (6, 106, None, 12),
+    assert list(data) == [(2, 102, 5, 6), (5, 105, 10, 11), (6, 106, None, 12),
                     (10, 110, None, None), (11, 111, None, None), (12, 112, None, None)]
 
 
@@ -335,8 +335,8 @@ def test_upsert_error():
     values = ((91, 3, 4, 901, [1, 2], "Harry"), (0, 1, 2, 201, [], "Diana"))
     returning = rt.upsert(columns, values, '{name}={EXCLUDED.name} || {temp}', {'temp': '_temp'}, ('uid', 'id', 'name'))
     row = rt.select('WHERE {id} = 0', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
-    assert returning == [(901, 91, 'Harry'), (100, 0, 'Diana_temp')]
-    assert row == [(0, 1, 2, 100, None, "Diana_temp")]
+    assert list(returning) == [(901, 91, 'Harry'), (100, 0, 'Diana_temp')]
+    assert list(row) == [(0, 1, 2, 100, None, "Diana_temp")]
 
 
 def test_update():
@@ -346,8 +346,8 @@ def test_update():
     rt = raw_table(config)
     returning = rt.update('{name}={name} || {new}', '{id}={qid}', {'qid': 0, 'new': '_new'}, ('id', 'name'))
     row = rt.select('WHERE {id} = 0', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
-    assert returning == [(0, 'root_new')]
-    assert row == [(0, 1, 2, 100, None, "root_new")]
+    assert list(returning) == [(0, 'root_new')]
+    assert list(row) == [(0, 1, 2, 100, None, "root_new")]
 
 
 def test_delete():
@@ -357,8 +357,8 @@ def test_delete():
     rt = raw_table(config)
     returning = rt.delete('{id}={target}', {'target': 7}, ('uid', 'id'))
     row = rt.select('WHERE {id} = 7', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
-    assert returning == [(107, 7)]
-    assert row == []
+    assert list(returning) == [(107, 7)]
+    assert list(row) == []
 
 
 def test_upsert_returning_all():
@@ -370,8 +370,8 @@ def test_upsert_returning_all():
     values = ((91, 3, 4, 901, [1, 2], "Harry"), (0, 1, 2, 201, [], "Diana"))
     returning = rt.upsert(columns, values, '{name}={EXCLUDED.name} || {temp}', {'temp': '_temp'}, '*')
     row = rt.select('WHERE {id} = 0', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
-    assert len(returning[0]) == 7 and len(returning[1]) == 7
-    assert row == [(0, 1, 2, 100, None, "Diana_temp")]
+    assert len(next(returning)) == 7 and len(next(returning)) == 7
+    assert list(row) == [(0, 1, 2, 100, None, "Diana_temp")]
 
 
 def test_update_returning_all():
@@ -381,8 +381,8 @@ def test_update_returning_all():
     rt = raw_table(config)
     returning = rt.update('{name}={name} || {new}', '{id}={qid}', {'qid': 0, 'new': '_new'}, '*')
     row = rt.select('WHERE {id} = 0', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
-    assert len(returning[0]) == 7
-    assert row == [(0, 1, 2, 100, None, "root_new")]
+    assert len(next(returning)) == 7
+    assert list(row) == [(0, 1, 2, 100, None, "root_new")]
 
 
 def test_delete_returning_all():
@@ -392,8 +392,8 @@ def test_delete_returning_all():
     rt = raw_table(config)
     returning = rt.delete('{id}={target}', {'target': 7}, '*')
     row = rt.select('WHERE {id} = 7', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
-    assert len(returning[0]) == 7
-    assert row == []
+    assert len(next(returning)) == 7
+    assert list(row) == []
 
 
 def test_duplicate_table():
@@ -404,7 +404,7 @@ def test_duplicate_table():
     config2['delete_table'] = False
     rt1 = raw_table(config1)
     rt2 = raw_table(config2)
-    for t1, t2 in zip(rt1.select(columns=('updated',))[0], rt2.select(columns=('updated',))[0]):
+    for t1, t2 in zip(next(rt1.select(columns=('updated',))), next(rt2.select(columns=('updated',)))):
         assert t1 == t2
     rt1.delete_table()
     rt2.delete_table()
@@ -426,11 +426,11 @@ def test_discover_table():
     rt1.insert(columns, values)
     rt2 = raw_table({'database': _CONFIG['database'], 'table': _CONFIG['table']})
     data = rt2.select(columns=columns)
-    assert data == values
+    assert list(data) == values
     values.append((0, 1, 2, 201, [], "Diana"))
     rt2.insert(columns, [values[-1]])
     data = rt1.select(columns=columns)
-    assert data == values
+    assert list(data) == values
 
 
 def test_config_coercion():
@@ -672,7 +672,7 @@ def test_arbitrary_sql_return():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = raw_table(config)
-    result = t.arbitrary_sql('SELECT 2.0::REAL * 3.0::REAL')[0][0]
+    result = next(t.arbitrary_sql('SELECT 2.0::REAL * 3.0::REAL'))[0]
     assert result == approx(6.0)
 
 
@@ -682,27 +682,9 @@ def test_arbitrary_sql_no_return():
     config = deepcopy(_CONFIG)
     t = raw_table(config)
     result = t.arbitrary_sql('INSERT INTO "test_table" ("id","metadata","right","uid")' +
-                             ' VALUES (6,ARRAY[1],12,106) ON CONFLICT DO NOTHING')
-    assert result is None
-
-
-def test_arbitrary_sql_error_in_fetchall(monkeypatch):
-    """Execute some arbitrary SQL that errors in fetchall()."""
-    _logger.debug(stack()[0][3])
-    config = deepcopy(_CONFIG)
-    t = raw_table(config)
-
-    class mock_cursor():
-        def __init__(self) -> None: self.value = None
-        def fetchall(self): raise ProgrammingError
-
-    def mock_db_transaction(*args, **kwargs):
-        return [mock_cursor()]
-
-    monkeypatch.setattr(raw_table, '_db_transaction', mock_db_transaction)
+                             ' VALUES (6,ARRAY[1],12,106) ON CONFLICT DO NOTHING', read=False)
     try:
-        t.arbitrary_sql('INSERT INTO "test_table" ("id","metadata","right","uid")' +
-                        ' VALUES (6,ARRAY[1],12,106) ON CONFLICT DO NOTHING')
+        next(result)
     except ProgrammingError:
         pass
     else:

@@ -126,7 +126,6 @@ class raw_table():
         self.populate = populate
         self._table = sql.Identifier(self.config['table'])
         self._pm, self._pm_columns, self._pm_sql = self._ptr_map_def()
-        self._expand_empty_tuple = self.config['expand_empty_tuple']
         if self.config['delete_db']:
             self.delete_db()
         if not self._db_exists() and self.config['create_db']:
@@ -138,7 +137,7 @@ class raw_table():
 
     def __len__(self):
         """Return the number of entries in the table."""
-        return self._db_transaction((_TABLE_LEN_SQL.format(self._table),))[0].fetchone()[0]
+        return next(self._db_transaction(_TABLE_LEN_SQL.format(self._table)))[0]
 
     def _validate_config(self):
         """Validate the table configuration."""
@@ -198,14 +197,13 @@ class raw_table():
         db_delete(self.config['database']['dbname'], self.config['database'])
         self._db = False
 
-    def _db_transaction(self, sql_str_iter, read=True, repeatable=False):
+    def _db_transaction(self, sql_str, read=True, ctype='tuple'):
         """Wrap db_transaction."""
         if _logit:
-            for sql_str in sql_str_iter:
-                _logger.debug(self._sql_to_string(sql_str))
-        return db_transaction(self.config['database']['dbname'], self.config['database'], sql_str_iter, read, repeatable)
+            _logger.debug(self._sql_to_string(sql_str))
+        return db_transaction(self.config['database']['dbname'], self.config['database'], sql_str, read, ctype=ctype)
 
-    def arbitrary_sql(self, sql_str, literals={}, read=True, repeatable=False):
+    def arbitrary_sql(self, sql_str, literals={}, read=True, ctype='tuple'):
         """Exectue the arbitrary SQL string sql_str.
 
         The string is passed to psycopg2 to execute.
@@ -217,22 +215,18 @@ class raw_table():
         sql_str (str): SQL string to be executed.
         literals (dict): Keys are labels used in sql_str. Values are literals to replace the labels.
         read (bool): True if the SQL does not make changes to the database.
-        repeatable (bool): If True select transaction is done with repeatable read isolation.
+        ctype (str): One of 'tuple', 'namedtuple', 'dict'
 
         Returns
         -------
-        list(tuple) or None: SQL expression results
+        A psycopg2 cursor of a type defined by ctype:
+            'tuple': TupleCursor
+            'namedtuple': NamedTupleCursor
+            'dict': DictCursor
         """
         format_dict = self._format_dict(literals)
         sql_str = sql.SQL(sql_str).format(**format_dict)
-        result = self._db_transaction((sql_str,), read, repeatable)[0]
-        try:
-            retval = result.fetchall()
-        except ProgrammingError as e:
-            if "no results to fetch" in str(e):
-                return None
-            raise e
-        return retval
+        return self._db_transaction(sql_str, read, ctype)
 
     def _sql_to_string(self, sql_str):
         """Wrap sql.SQL.as_string() to convert sql.SQL to a string (usually for logging)."""
@@ -305,11 +299,11 @@ class raw_table():
             dbname = self.config['database']['dbname']
             _logger.info(text_token({'I05003': {'table': self.config['table'], 'dbname': dbname, 'backoff': backoff}}))
             sleep(backoff)
-        results = self._db_transaction((_TABLE_DEFINITION_SQL.format(sql.Literal(self.config['table'])),))[0].fetchall()
+        results = tuple(self._db_transaction(_TABLE_DEFINITION_SQL.format(sql.Literal(self.config['table']))))
         columns = tuple((column[0] for column in results))
         schema = {c: rtccv.normalized({'type': d.upper(), 'nullable': n == 'YES'}) for c, d, n in results}
-        constraints = self._db_transaction((_TABLE_GET_PRIMARY_KEY_SQL.format(sql.Literal(self.config['table'])),))
-        for column, constraint in constraints[0].fetchall():
+        constraints = self._db_transaction(_TABLE_GET_PRIMARY_KEY_SQL.format(sql.Literal(self.config['table'])))
+        for column, constraint in constraints:
             schema[column]['primary_key'] = (constraint == 'PRIMARY KEY') or schema[column].get('primary_key', False)
             schema[column]['unique'] = (constraint == 'UNIQUE') or schema[column].get('primary_key', False)
 
@@ -345,7 +339,7 @@ class raw_table():
             backoff = next(backoff_gen)
             _logger.info(text_token({'I05005': {'dbname': self.config['database']['dbname'], 'backoff': backoff}}))
             sleep(backoff)
-        return self._db_transaction((_TABLE_EXISTS_SQL.format(sql.Literal(self.config['table'])), ))[0].fetchone()[0]
+        return next(self._db_transaction(_TABLE_EXISTS_SQL.format(sql.Literal(self.config['table']))))[0]
 
     def _add_alignment(self, definition):
         """Add the byte alignment of the column type to the column definition.
@@ -416,7 +410,7 @@ class raw_table():
         _logger.info(text_token(
             {'I05000': {'sql': self._sql_to_string(sql_str)}}))
         try:
-            self._db_transaction((sql_str,), read=False)
+            self._db_transaction(sql_str, read=False)
         except ProgrammingError as e:
             if e.pgcode == errors.DuplicateTable:
                 _logger.info(text_token({'I05001': {'table': self.config['table'], 'dbname': self.config['database']}}))
@@ -435,23 +429,16 @@ class raw_table():
             sql_str += sql.SQL(" USING ") + sql.Identifier(definition['index'])
             sql_str += _TABLE_INDEX_COLUMN_SQL.format(sql.Identifier(column))
             _logger.info(text_token({'I05000': {'sql': self._sql_to_string(sql_str)}}))
-            self._db_transaction((sql_str,), read=False)
+            self._db_transaction(sql_str, read=False)
 
     def delete_table(self):
         """Delete the table."""
         if self._db_exists():
             sql_str = _TABLE_DELETE_TABLE_SQL.format(self._table)
             _logger.info(text_token({'I05000': {'sql': self._sql_to_string(sql_str)}}))
-            self._db_transaction((sql_str,), read=False)
+            self._db_transaction(sql_str, read=False)
 
-    def _sql_queries_transaction(self, sql_str_list, repeatable=False):
-        cursors = self._db_transaction(sql_str_list, repeatable)
-        data = tuple((dbcur.fetchall() for dbcur in cursors))
-        for cursor in cursors:
-            cursor.close()
-        return data
-
-    def select(self, query_str='', literals={}, columns='*', repeatable=False):
+    def select(self, query_str='', literals={}, columns='*', ctype='tuple'):
         """Select columns to return for rows matching query_str.
 
         Args
@@ -465,11 +452,14 @@ class raw_table():
         columns (iter(str) or str): The columns to be returned on update if an iterable of str.
             If '*' all columns are returned. If another str interpreted as formatted SQL after 'SELECT'
             and before 'FROM' as query_str.
-        repeatable (bool): If True select transaction is done with repeatable read isolation.
+        ctype (str): One of 'tuple', 'namedtuple', 'dict'
 
         Returns
         -------
-        (list(tuple)): An list of the values specified by columns for the specified query_str.
+        A psycopg2 cursor of a type defined by ctype:
+            'tuple': TupleCursor
+            'namedtuple': NamedTupleCursor
+            'dict': DictCursor
         """
         if columns == '*':
             columns = self._columns
@@ -478,10 +468,10 @@ class raw_table():
             columns = sql.SQL(columns).format(**format_dict)
         else:
             columns = sql.SQL(', ').join(map(sql.Identifier, columns))
-        sql_str_list = [_TABLE_SELECT_SQL.format(columns, self._table, sql.SQL(query_str).format(**format_dict))]
-        return self._sql_queries_transaction(sql_str_list, repeatable)[0]
+        sql_str = _TABLE_SELECT_SQL.format(columns, self._table, sql.SQL(query_str).format(**format_dict))
+        return self._db_transaction(sql_str, ctype=ctype)
 
-    def recursive_select(self, query_str, literals={}, columns='*', repeatable=False):
+    def recursive_select(self, query_str, literals={}, columns='*', ctype='tuple'):
         """Recursive select of columns to return for rows matching query_str.
 
         Recursion is defined by the ptr_map (pointer map) in the table config.
@@ -503,12 +493,15 @@ class raw_table():
         query_str (str): Query SQL: See select() for details.
         literals (dict): Keys are labels used in query_str. Values are literals to replace the labels.
         columns (iter): The columns to be returned on update. If '*' defined all columns are returned.
-        repeatable (bool): If True select transaction is done with repeatable read isolation.
+        ctype (str): One of 'tuple', 'namedtuple', 'dict'
 
         Returns
         -------
-        (list(tuple)): An list of the values specified by columns for the specified recursive query_str
-            and pointer map.
+        A psycopg2 cursor of a type defined by ctype of the values specified by columns for the specified
+        recursive query_str and pointer map.
+            'tuple': TupleCursor
+            'namedtuple': NamedTupleCursor
+            'dict': DictCursor
         """
         if columns == '*':
             columns = self._columns
@@ -520,9 +513,9 @@ class raw_table():
         t_columns = sql.SQL('t.') + sql.SQL(', t.').join(map(sql.Identifier, columns))
         columns = sql.SQL(', ').join(map(sql.Identifier, columns))
         format_dict = self._format_dict(literals)
-        sql_str_list = [_TABLE_RECURSIVE_SELECT.format(columns, self._table, sql.SQL(
-            query_str).format(**format_dict), t_columns, self._pm_sql)]
-        return self._sql_queries_transaction(sql_str_list, repeatable)[0]
+        sql_str = _TABLE_RECURSIVE_SELECT.format(columns, self._table, sql.SQL(
+            query_str).format(**format_dict), t_columns, self._pm_sql)
+        return self._db_transaction(sql_str, ctype=ctype)
 
     def _format_dict(self, literals):
         """Create a formatting dict of literals and column identifiers."""
@@ -530,19 +523,12 @@ class raw_table():
         if dupes:
             raise ValueError("Literals cannot have keys that are the names of table columns:{}".format(dupes))
         format_dict = {k: sql.Identifier(k) for k in self._columns}
-
-        # There is an irritating corner of SQL where 'x IN ()' is a syntax error.
-        # 'x in (null)' will return null which is effectively False in a WHERE clause
-        # so we look for empty literal tuples and replace them with (None,)
-        if self._expand_empty_tuple:
-            for k, v in filter(_SQL_TUPLE_FILTER, literals.items()):
-                literals[k] = _SQL_EMPTY_TUPLE
         format_dict.update({k: sql.Literal(v) for k, v in literals.items()})
         return format_dict
 
     # TODO: This could overflow an SQL statement size limit. In which case
     # should we use a COPY https://www.postgresql.org/docs/12/dml-insert.html
-    def upsert(self, columns, values, update_str=None, literals={}, returning=tuple()):
+    def upsert(self, columns, values, update_str=None, literals={}, returning=tuple(), ctype='tuple'):
         """Upsert values.
 
         If update_str is None each entry will be inserted or replace the existing entry on conflict.
@@ -561,11 +547,14 @@ class raw_table():
                     UPDATE SET "column1" = EXCLUDED."column1" + 1
         literals (dict): Keys are labels used in update_str. Values are literals to replace the labels.
         returning (iter): The columns to be returned on update. If None or empty no columns will be returned.
+        ctype (str): One of 'tuple', 'namedtuple', 'dict'
 
         Returns
         -------
-        (list(tuple)): An list of the values specified by returning for each updated row or [] if returning is
-            an empty iterable or None.
+        A psycopg2 cursor of a type defined by ctype of the values specified by returning for each updated row:
+            'tuple': TupleCursor
+            'namedtuple': NamedTupleCursor
+            'dict': DictCursor
         """
         if not values:
             return []
@@ -585,12 +574,8 @@ class raw_table():
         update_sql = sql.SQL(update_str).format(**format_dict)
         if returning:
             update_sql += _TABLE_RETURNING_SQL + sql.SQL(',').join([sql.Identifier(column) for column in returning])
-        retval = self._db_transaction((_TABLE_INSERT_SQL.format(
-            self._table, columns_sql, values_sql) + update_sql,), read=False)[0]
-        data = retval.fetchall() if returning else []
-        if returning:
-            retval.close()
-        return data
+        return self._db_transaction(_TABLE_INSERT_SQL.format(
+            self._table, columns_sql, values_sql) + update_sql, read=False, ctype=ctype)
 
     def insert(self, columns, values):
         """Insert values.
@@ -602,7 +587,7 @@ class raw_table():
         """
         self.upsert(columns, values, _TABLE_INSERT_CONFLICT_STR)
 
-    def update(self, update_str, query_str, literals={}, returning=tuple()):
+    def update(self, update_str, query_str, literals={}, returning=tuple(), ctype='tuple'):
         """Update rows.
 
         Each row matching the query_str will be updated by the update_str.
@@ -617,11 +602,14 @@ class raw_table():
                 UPDATE "test_table" SET "column1" = "column1" + 1 WHERE "column2" = 9
         literals (dict): Keys are labels used in update_str. Values are literals to replace the labels.
         returning (iter): An iterable of column names to return for each updated row.
+        ctype (str): One of 'tuple', 'namedtuple', 'dict'
 
         Returns
         -------
-        (list(tuple)): An list of the values specified by returning for each updated row or [] if returning is
-            an empty iterable or None.
+        A psycopg2 cursor of a type defined by ctype of the values specified by returning for each updated row:
+            'tuple': TupleCursor
+            'namedtuple': NamedTupleCursor
+            'dict': DictCursor
         """
         if returning == '*':
             returning = self._columns
@@ -630,13 +618,9 @@ class raw_table():
             **format_dict), sql.SQL(query_str).format(**format_dict))
         if returning:
             sql_str += _TABLE_RETURNING_SQL + sql.SQL(',').join([sql.Identifier(column) for column in returning])
-        retval = self._db_transaction((sql_str,), read=False)[0]
-        data = retval.fetchall() if returning else []
-        if returning:
-            retval.close()
-        return data
+        return self._db_transaction(sql_str, read=False, ctype=ctype)
 
-    def delete(self, query_str, literals={}, returning=tuple()):
+    def delete(self, query_str, literals={}, returning=tuple(), ctype='tuple'):
         """Delete rows from the table.
 
         If query_str is not specified all rows in the table are deleted.
@@ -649,11 +633,14 @@ class raw_table():
                 DELETE FROM "test_table" WHERE "column1" = 72
         literals (dict): Keys are labels used in update_str. Values are literals to replace the labels.
         returning (iter): An iterable of column names to return for each deleted row.
+        ctype (str): One of 'tuple', 'namedtuple', 'dict'
 
         Returns
         -------
-        (list(tuple)): An list of the values specified by returning for each updated row or [] if returning is
-            an empty iterable or None.
+        A psycopg2 cursor of a type defined by ctype of the values specified by returning for each updated row:
+            'tuple': TupleCursor
+            'namedtuple': NamedTupleCursor
+            'dict': DictCursor
         """
         if returning == '*':
             returning = self._columns
@@ -661,8 +648,4 @@ class raw_table():
         sql_str = _TABLE_DELETE_SQL.format(self._table, sql.SQL(query_str).format(**format_dict))
         if returning:
             sql_str += _TABLE_RETURNING_SQL + sql.SQL(',').join([sql.Identifier(column) for column in returning])
-        retval = self._db_transaction((sql_str,), read=False)[0]
-        data = retval.fetchall() if returning else []
-        if returning:
-            retval.close()
-        return data
+        return self._db_transaction(sql_str, read=False)
