@@ -16,13 +16,12 @@ _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
 
 
-def _dynamic_decode(columns, _table):
+def _dynamic_decode(columns, _table, code):
     conversions = []
     for i, column in enumerate(columns):
-        if _table._conversions[column]['decode'] is None:
-            conversions.append(f'v[{i}]')
-        else:
-            conversions.append(f'self.conversions[{i}](v[{i}])')
+        comment = f'# {column}'
+        value = f'v[{i}],' if _table._conversions[column][code] is None else f'self.conversions[{i}](v[{i}]),'
+        conversions.append(f'{value:<30} {comment}')
     return conversions
 
 
@@ -44,8 +43,8 @@ class tuple_iter():
         """
         self.values = values
         self.conversions = [_table._conversions[column][code] for column in columns]
-        mapping = ','.join([f'{v}' for v in _dynamic_decode(columns, _table)]) + ','
-        exec_str = f'def _next(self):\n\tv = next(self.values)\n\treturn ({mapping})'
+        mapping = '\n'.join([f'\t\t{v}' for v in _dynamic_decode(columns, _table, code)])
+        exec_str = f'def _next(self):\n\tv = next(self.values)\n\treturn (\n{mapping}\n\t)'
         _logger.debug(f'tuple_iter function:\n{exec_str}')
         scope={}
         exec(exec_str, locals(), scope)
@@ -82,8 +81,8 @@ class namedtuple_iter():
         self.values = values
         self.conversions = [_table._conversions[column][code] for column in columns]
         self.namedtuple = namedtuple('row', columns)
-        mapping = ','.join((f'{v}' for v in _dynamic_decode(columns, _table)))
-        exec_str = f'def _next(self):\n\tv = next(self.values)\n\treturn self.namedtuple({mapping})'
+        mapping = '\n'.join((f'\t\t{v}' for v in _dynamic_decode(columns, _table, code)))
+        exec_str = f'def _next(self):\n\tv = next(self.values)\n\treturn self.namedtuple(\n{mapping}\n\t)'
         _logger.debug(f'namedtuple_iter function:\n{exec_str}')
         scope={}
         exec(exec_str, locals(), scope)
@@ -119,8 +118,9 @@ class dict_iter():
         _next = None
         self.values = values
         self.conversions = [_table._conversions[column][code] for column in columns]
-        mapping = ','.join((f"'{k}':{v}" for k, v in zip(columns, _dynamic_decode(columns, _table))))
-        exec_str = f'def _next(self):\n\tv = next(self.values)\n\treturn {{{mapping}}}'
+        c_str = (f"'{c}':" for c in columns)
+        mapping = '\n'.join((f"\t\t{k:<20}{v}" for k, v in zip(c_str, _dynamic_decode(columns, _table, code))))
+        exec_str = f'def _next(self):\n\tv = next(self.values)\n\treturn {{\n{mapping}\n\t}}'
         _logger.debug(f'dict_iter function:\n{exec_str}')
         scope={}
         exec(exec_str, locals(), scope)

@@ -556,8 +556,6 @@ class raw_table():
             'namedtuple': NamedTupleCursor
             'dict': DictCursor
         """
-        if not values:
-            return []
         if returning == '*':
             returning = self._columns
         if update_str is None:
@@ -569,6 +567,8 @@ class raw_table():
         columns_sql = sql.SQL(",").join([sql.Identifier(k) for k in columns])
         values_sql = sql.SQL(",").join((sql.SQL("({0})").format(
             sql.SQL(",").join((sql.Literal(value) for value in row))) for row in values))
+        if not values_sql.seq:
+            return iter(tuple())
         format_dict = self._format_dict(literals)
         format_dict.update({'EXCLUDED.' + k: sql.SQL('EXCLUDED.') + sql.Identifier(k) for k in columns})
         update_sql = sql.SQL(update_str).format(**format_dict)
