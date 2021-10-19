@@ -25,7 +25,12 @@ def _dynamic_decode(columns, _table, code):
     return conversions
 
 
-class tuple_iter():
+# TODO
+class _base_iter():
+    pass
+
+
+class tuple_iter(_base_iter):
     """Iterator returning a tuple decoded values from values.
 
     The order of the tuples returned is the same as the rows of values in values.
@@ -33,6 +38,8 @@ class tuple_iter():
     unchanged if no conversion has been registered.
     """
 
+    _next_dict = {}
+
     def __init__(self, columns, values, _table, code='decode'):
         """Initialise.
 
@@ -42,14 +49,18 @@ class tuple_iter():
         values  (row_iter): Iterator over rows (tuples) with values in the order as columns.
         """
         self.values = values
+        columns_str = ''.join(sorted(columns))
         self.conversions = [_table._conversions[column][code] for column in columns]
-        mapping = '\n'.join([f'\t\t{v}' for v in _dynamic_decode(columns, _table, code)])
-        exec_str = f'def _next(self):\n\tv = next(self.values)\n\treturn (\n{mapping}\n\t)'
-        _logger.debug(f'tuple_iter function:\n{exec_str}')
-        scope={}
-        exec(exec_str, locals(), scope)
-        self._next = scope['_next']
-
+        if columns_str not in tuple_iter._next_dict:
+            mapping = '\n'.join([f'\t\t{v}' for v in _dynamic_decode(columns, _table, code)])
+            exec_str = f'def _next(self):\n\tv = next(self.values)\n\treturn (\n{mapping}\n\t)'
+            _logger.debug(f'tuple_iter function:\n{exec_str}')
+            scope={}
+            exec(exec_str, locals(), scope)
+            tuple_iter._next_dict[columns_str] = scope['_next']
+        else:
+            _logger.debug('Found existing __next__() function for tuple_iter().')
+        self._next = tuple_iter._next_dict[columns_str]
 
     def __iter__(self):
         """Self iteration."""
@@ -61,7 +72,7 @@ class tuple_iter():
         return self._next(self)
 
 
-class namedtuple_iter():
+class namedtuple_iter(_base_iter):
     """Iterator returning a namedtuple with columns keys and decoded values from values.
 
     The order of the tuples returned is the same as the rows of values in values.
@@ -69,6 +80,8 @@ class namedtuple_iter():
     unchanged if no conversion has been registered.
     """
 
+    _next_dict = {}
+
     def __init__(self, columns, values, _table, code='decode'):
         """Initialise.
 
@@ -77,16 +90,20 @@ class namedtuple_iter():
         columns (iter(str)): Column names for each of the rows in values.
         values  (row_iter): Iterator over rows (tuples) with values in the order as columns.
         """
-        _next = None
         self.values = values
+        columns_str = ''.join(sorted(columns))
         self.conversions = [_table._conversions[column][code] for column in columns]
-        self.namedtuple = namedtuple('row', columns)
-        mapping = '\n'.join((f'\t\t{v}' for v in _dynamic_decode(columns, _table, code)))
-        exec_str = f'def _next(self):\n\tv = next(self.values)\n\treturn self.namedtuple(\n{mapping}\n\t)'
-        _logger.debug(f'namedtuple_iter function:\n{exec_str}')
-        scope={}
-        exec(exec_str, locals(), scope)
-        self._next = scope['_next']
+        if columns_str not in namedtuple_iter._next_dict:
+            self.namedtuple = namedtuple('row', columns)
+            mapping = '\n'.join((f'\t\t{v}' for v in _dynamic_decode(columns, _table, code)))
+            exec_str = f'def _next(self):\n\tv = next(self.values)\n\treturn self.namedtuple(\n{mapping}\n\t)'
+            _logger.debug(f'namedtuple_iter function:\n{exec_str}')
+            scope={}
+            exec(exec_str, locals(), scope)
+            namedtuple_iter._next_dict[columns_str] = scope['_next']
+        else:
+            _logger.debug('Found existing __next__() function for namedtuple_iter().')
+        self._next = namedtuple_iter._next_dict[columns_str]
 
 
     def __iter__(self):
@@ -99,13 +116,15 @@ class namedtuple_iter():
         return self._next(self)
 
 
-class dict_iter():
+class dict_iter(_base_iter):
     """Iterator returning a dict with columns keys and decoded values from values.
 
     The order of the dicts returned is the same as the rows of values in values.
     Each value is decoded by the registered conversion function (see register_conversion()) or
     unchanged if no conversion has been registered.
     """
+
+    _next_dict = {}
 
     def __init__(self, columns, values, _table, code='decode'):
         """Initialise.
@@ -115,16 +134,20 @@ class dict_iter():
         columns (iter(str)): Column names for each of the rows in values.
         values  (row_iter): Iterator over rows (tuples) with values in the order as columns.
         """
-        _next = None
         self.values = values
+        columns_str = ''.join(sorted(columns))
         self.conversions = [_table._conversions[column][code] for column in columns]
-        c_str = (f"'{c}':" for c in columns)
-        mapping = '\n'.join((f"\t\t{k:<20}{v}" for k, v in zip(c_str, _dynamic_decode(columns, _table, code))))
-        exec_str = f'def _next(self):\n\tv = next(self.values)\n\treturn {{\n{mapping}\n\t}}'
-        _logger.debug(f'dict_iter function:\n{exec_str}')
-        scope={}
-        exec(exec_str, locals(), scope)
-        self._next = scope['_next']
+        if columns_str not in dict_iter._next_dict:
+            c_str = (f"'{c}':" for c in columns)
+            mapping = '\n'.join((f"\t\t{k:<20}{v}" for k, v in zip(c_str, _dynamic_decode(columns, _table, code))))
+            exec_str = f'def _next(self):\n\tv = next(self.values)\n\treturn {{\n{mapping}\n\t}}'
+            _logger.debug(f'dict_iter function:\n{exec_str}')
+            scope={}
+            exec(exec_str, locals(), scope)
+            dict_iter._next_dict[columns_str] = scope['_next']
+        else:
+            _logger.debug('Found existing __next__() function for dict_iter().')
+        self._next = dict_iter._next_dict[columns_str]
 
 
     def __iter__(self):
