@@ -18,7 +18,7 @@ from .validators import raw_table_config_validator
 
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
-def _logit(): return _logger.getEffectiveLevel() == DEBUG
+_LOG_DEBUG = _logger.isEnabledFor(DEBUG)
 
 
 register_token_code("I05000", "SQL: {sql}")
@@ -199,7 +199,7 @@ class raw_table():
 
     def _db_transaction(self, sql_str, read=True, ctype='tuple'):
         """Wrap db_transaction."""
-        if _logit:
+        if _LOG_DEBUG:
             _logger.debug(self._sql_to_string(sql_str))
         return db_transaction(self.config['database']['dbname'], self.config['database'], sql_str, read, ctype=ctype)
 
@@ -251,38 +251,49 @@ class raw_table():
                     for columns, values in self.batch_dict_data(load(file_ptr)):
                         self.insert(columns, values)
 
-    def batch_dict_data(self, data, exclude=tuple()):
+    def batch_dict_data(self, data, exclude=tuple(), ordered=False):
         """Generate to break up an iterable of dictionaries into batches with the same keys.
 
-        The order of dictionaries in the iterable is preserved (if it is ordered).
+        The order of dictionaries in the iterable is not preserved by default.
         Data keys that are not table columns are filtered out.
 
         Args
         ----
         data (iter(dict)): Each dict is a subset of a table row.
         exclude (iter(str)): Iterable of columns to exclude.
+        ordered (bool): Maintain row order (this may matter in some corner cases)
 
         Returns
         -------
         tuple(keys), (list(list)): A consectutive batch of rows with the same keys.
         """
-        last_datum_keys = set()
-        ordered_keys = tuple()
-        current_batch = []
         set_of_columns = set(self._columns) - set(exclude)
-        for datum in data:
-            datum_keys = set(datum.keys()) & set_of_columns
-            if last_datum_keys == set(datum_keys):
-                current_batch.append([datum[k] for k in ordered_keys])
-            else:
-                if current_batch:
-                    yield ordered_keys, current_batch
-                ordered_keys = tuple(datum_keys)
-                current_batch = [[datum[k] for k in ordered_keys]]
-                last_datum_keys = set(datum_keys)
-        yield ordered_keys, current_batch
-
-    # Get the table definition
+        ordered_keys = tuple()
+        if ordered:
+            last_datum_keys = set()
+            current_batch = []
+            for datum in data:
+                datum_keys = set(datum.keys()) & set_of_columns
+                if last_datum_keys == set(datum_keys):
+                    current_batch.append([datum[k] for k in ordered_keys])
+                else:
+                    if current_batch:
+                        yield ordered_keys, current_batch
+                    ordered_keys = tuple(datum_keys)
+                    current_batch = [[datum[k] for k in ordered_keys]]
+                    last_datum_keys = set(datum_keys)
+            yield ordered_keys, current_batch
+        else:
+            batches = {}
+            ordered_keys = {}
+            for datum in data:
+                datum_keys = set(datum.keys()) & set_of_columns
+                datum_keys_hash = ''.join(sorted(datum_keys))
+                batches.setdefault(datum_keys_hash, [])
+                ordered_keys.setdefault(datum_keys_hash, tuple(datum_keys))
+                batches[datum_keys_hash].append([datum[k] for k in ordered_keys[datum_keys_hash]])
+            for datum_keys_hash, batch in batches.items():
+                yield ordered_keys[datum_keys_hash], batch
 
     def _table_definition(self):
         """Get the table schema when it is defined in the database.
@@ -297,7 +308,7 @@ class raw_table():
         while not self._table_exists() and self.config['wait_for_table']:
             backoff = next(backoff_gen)
             dbname = self.config['database']['dbname']
-            _logger.info(text_token({'I05003': {'table': self.config['table'], 'dbname': dbname, 'backoff': backoff}}))
+            if _LOG_DEBUG: _logger.debug(text_token({'I05003': {'table': self.config['table'], 'dbname': dbname, 'backoff': backoff}}))
             sleep(backoff)
         results = tuple(self._db_transaction(_TABLE_DEFINITION_SQL.format(sql.Literal(self.config['table']))))
         columns = tuple((column[0] for column in results))

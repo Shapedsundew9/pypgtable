@@ -3,161 +3,91 @@
 
 from copy import deepcopy
 from json import load
-from logging import NullHandler, getLogger
+from logging import NullHandler, getLogger, DEBUG
 from os.path import join
 from collections import namedtuple
-
-from psycopg2.errors import ProgrammingError
 
 from .raw_table import raw_table
 from .utils.text_token import text_token
 
+
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
+_LOG_DEBUG = _logger.isEnabledFor(DEBUG)
 
 
-def _dynamic_decode(columns, _table, code):
-    conversions = []
-    for i, column in enumerate(columns):
-        comment = f'# {column}'
-        value = f'v[{i}],' if _table._conversions[column][code] is None else f'self.conversions[{i}](v[{i}]),'
-        conversions.append(f'{value:<30} {comment}')
-    return conversions
-
-
-# TODO
 class _base_iter():
-    pass
+    """Iterator returning a container of decoded values from values.
+
+    The order of the containers returned is the same as the rows of values in values.
+    Each value is decoded by the registered conversion function (see register_conversion()) or
+    unchanged if no conversion has been registered.
+    """
+
+    def __init__(self, columns, values, _table, code='decode'):
+        """Initialise.
+
+        Args
+        ----
+        columns (iter(str)): Column names for each of the rows in values.
+        values  (row_iter): Iterator over rows (tuples) with values in the order as columns.
+        """
+        self.values = values
+        self.conversions = [_table._conversions[column][code] for column in columns]
+        self.columns = columns
+
+    def __iter__(self):
+        """Self iteration."""
+        return self
+
+    def __next__(self):
+        """Never gets run."""
+        raise NotImplementedError
+
+
+class gen_iter(_base_iter):
+    """Iterator returning a generator for decoded values from values."""
+
+    def __init__(self, columns, values, _table, code='decode'):
+        super().__init__(columns, values, _table, code)
+
+    def __next__(self):
+        """Return next value."""
+        return (v if f is None else f(v) for f, v in zip(self.conversions, next(self.values)))
 
 
 class tuple_iter(_base_iter):
-    """Iterator returning a tuple decoded values from values.
-
-    The order of the tuples returned is the same as the rows of values in values.
-    Each value is decoded by the registered conversion function (see register_conversion()) or
-    unchanged if no conversion has been registered.
-    """
-
-    _next_dict = {}
+    """Iterator returning a tuple for decoded values from values."""
 
     def __init__(self, columns, values, _table, code='decode'):
-        """Initialise.
-
-        Args
-        ----
-        columns (iter(str)): Column names for each of the rows in values.
-        values  (row_iter): Iterator over rows (tuples) with values in the order as columns.
-        """
-        self.values = values
-        columns_str = ''.join(sorted(columns))
-        self.conversions = [_table._conversions[column][code] for column in columns]
-        if columns_str not in tuple_iter._next_dict:
-            mapping = '\n'.join([f'\t\t{v}' for v in _dynamic_decode(columns, _table, code)])
-            exec_str = f'def _next(self):\n\tv = next(self.values)\n\treturn (\n{mapping}\n\t)'
-            _logger.debug(f'tuple_iter function:\n{exec_str}')
-            scope={}
-            exec(exec_str, locals(), scope)
-            tuple_iter._next_dict[columns_str] = scope['_next']
-        else:
-            _logger.debug('Found existing __next__() function for tuple_iter().')
-        self._next = tuple_iter._next_dict[columns_str]
-
-    def __iter__(self):
-        """Self iteration."""
-        return self
-
+        super().__init__(columns, values, _table, code)
 
     def __next__(self):
-        """Replace by a dynamic function generated in __init__()."""
-        return self._next(self)
+        """Return next value."""
+        return tuple((v if f is None else f(v) for f, v in zip(self.conversions, next(self.values))))
 
 
 class namedtuple_iter(_base_iter):
-    """Iterator returning a namedtuple with columns keys and decoded values from values.
-
-    The order of the tuples returned is the same as the rows of values in values.
-    Each value is decoded by the registered conversion function (see register_conversion()) or
-    unchanged if no conversion has been registered.
-    """
-
-    _next_dict = {}
+    """Iterator returning a namedtuple for decoded values from values."""
 
     def __init__(self, columns, values, _table, code='decode'):
-        """Initialise.
-
-        Args
-        ----
-        columns (iter(str)): Column names for each of the rows in values.
-        values  (row_iter): Iterator over rows (tuples) with values in the order as columns.
-        """
-        self.values = values
-        columns_str = ''.join(sorted(columns))
-        self.conversions = [_table._conversions[column][code] for column in columns]
-        if columns_str not in namedtuple_iter._next_dict:
-            self.namedtuple = namedtuple('row', columns)
-            mapping = '\n'.join((f'\t\t{v}' for v in _dynamic_decode(columns, _table, code)))
-            exec_str = f'def _next(self):\n\tv = next(self.values)\n\treturn self.namedtuple(\n{mapping}\n\t)'
-            _logger.debug(f'namedtuple_iter function:\n{exec_str}')
-            scope={}
-            exec(exec_str, locals(), scope)
-            namedtuple_iter._next_dict[columns_str] = scope['_next']
-        else:
-            _logger.debug('Found existing __next__() function for namedtuple_iter().')
-        self._next = namedtuple_iter._next_dict[columns_str]
-
-
-    def __iter__(self):
-        """Self iteration."""
-        return self
-
+        super().__init__(columns, values, _table, code)
+        self.namedtuple = namedtuple('row', columns)
 
     def __next__(self):
-        """Replace by a dynamic function generated in __init__()."""
-        return self._next(self)
+        """Return next value."""
+        return self.namedtuple((v if f is None else f(v) for f, v in zip(self.conversions, next(self.values))))
 
 
 class dict_iter(_base_iter):
-    """Iterator returning a dict with columns keys and decoded values from values.
-
-    The order of the dicts returned is the same as the rows of values in values.
-    Each value is decoded by the registered conversion function (see register_conversion()) or
-    unchanged if no conversion has been registered.
-    """
-
-    _next_dict = {}
+    """Iterator returning a dict for decoded values from values."""
 
     def __init__(self, columns, values, _table, code='decode'):
-        """Initialise.
-
-        Args
-        ----
-        columns (iter(str)): Column names for each of the rows in values.
-        values  (row_iter): Iterator over rows (tuples) with values in the order as columns.
-        """
-        self.values = values
-        columns_str = ''.join(sorted(columns))
-        self.conversions = [_table._conversions[column][code] for column in columns]
-        if columns_str not in dict_iter._next_dict:
-            c_str = (f"'{c}':" for c in columns)
-            mapping = '\n'.join((f"\t\t{k:<20}{v}" for k, v in zip(c_str, _dynamic_decode(columns, _table, code))))
-            exec_str = f'def _next(self):\n\tv = next(self.values)\n\treturn {{\n{mapping}\n\t}}'
-            _logger.debug(f'dict_iter function:\n{exec_str}')
-            scope={}
-            exec(exec_str, locals(), scope)
-            dict_iter._next_dict[columns_str] = scope['_next']
-        else:
-            _logger.debug('Found existing __next__() function for dict_iter().')
-        self._next = dict_iter._next_dict[columns_str]
-
-
-    def __iter__(self):
-        """Self iteration."""
-        return self
-
+        super().__init__(columns, values, _table, code)
 
     def __next__(self):
-        """Replace by a dynamic function generated in __init__()."""
-        return self._next(self)
+        """Return next value."""
+        return {c: v if f is None else f(v) for c, f, v in zip(self.columns, self.conversions, next(self.values))}
 
 
 class table():
@@ -243,6 +173,8 @@ class table():
             return tuple_iter(columns, values, self)
         if container == 'namedtuple':
             return namedtuple_iter(columns, values, self)
+        if container == 'generator':
+            return gen_iter(columns, values, self)
         return dict_iter(columns, values, self)
 
     def register_conversion(self, column, encode_func, decode_func):
@@ -377,6 +309,7 @@ class table():
         """
         retval = []
         for columns, values in self.raw.batch_dict_data(values_dict, exclude):
+            if _LOG_DEBUG: _logger.debug(f"Batched {len(values)} rows.")
             results = self.raw.upsert(columns, tuple_iter(columns, iter(values), self, 'encode'), update_str, literals, returning)
             if returning:
                 retval.extend(results)
