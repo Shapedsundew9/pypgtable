@@ -309,13 +309,12 @@ class table():
         """
         retval = []
         for columns, values in self.raw.batch_dict_data(values_dict, exclude):
-            if _LOG_DEBUG: _logger.debug(f"Batched {len(values)} rows.")
             results = self.raw.upsert(columns, tuple_iter(columns, iter(values), self, 'encode'), update_str, literals, returning)
             if returning:
                 retval.extend(results)
         return self._return_container(returning, iter(retval), container)
 
-    def insert(self, values_dict, exclude=tuple()):
+    def insert(self, values_dict, returning=tuple(), container='dict', exclude=tuple()):
         """Insert values.
 
         Args
@@ -323,9 +322,20 @@ class table():
         values_dict (iter(dict)): Keys are column names. Values will be encoded by the registered conversion
             function (if any).
         exclude (iter(str)): Iterable of columns to exclude.
+        returning (iter): The columns to be returned on update. If None or empty no columns will be returned.
+        container (str): Defines the type of container in the returned list. Set as either
+            'tuple': Returns a list(tuple) where tuples are in the order of columns.
+            'list': Returns a list(list) where sub-lists are in the order of columns.
+            'pkdict': Returns a list(dict(dict)) where the first dict is is a dict of primary keys
+                and the second a dict of columns.
+            any other value returns list(dicts) with the specified columns.
         """
+        retval = []
         for columns, values in self.raw.batch_dict_data(values_dict, exclude):
-            self.raw.insert(columns, tuple_iter(columns, iter(values), self, 'encode'))
+            results = self.raw.insert(columns, tuple_iter(columns, iter(values), self, 'encode'), returning)
+            if returning:
+                retval.extend(results)
+        return self._return_container(returning, iter(retval), container)
 
     def update(self, update_str, query_str, literals={}, returning=tuple(), container='dict'):
         """Update rows.

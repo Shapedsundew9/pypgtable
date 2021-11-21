@@ -588,15 +588,16 @@ class raw_table():
         return self._db_transaction(_TABLE_INSERT_SQL.format(
             self._table, columns_sql, values_sql) + update_sql, read=False, ctype=ctype)
 
-    def insert(self, columns, values):
+    def insert(self, columns, values, returning=tuple()):
         """Insert values.
 
         Args
         ----
         columns (iter(str)): Column names for each of the rows in values.
         values  (iter(tuple/list)): Iterable of rows (ordered iterables) with values in the order as columns.
+        returning (iter): The columns to be returned on update. If None or empty no columns will be returned.
         """
-        self.upsert(columns, values, _TABLE_INSERT_CONFLICT_STR)
+        return self.upsert(columns, values, _TABLE_INSERT_CONFLICT_STR, returning=returning)
 
     def update(self, update_str, query_str, literals={}, returning=tuple(), ctype='tuple'):
         """Update rows.
