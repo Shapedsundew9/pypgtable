@@ -239,7 +239,7 @@ class table():
         """
         return self._return_container(columns, self.raw.select(query_str, literals, columns), container)
 
-    def recursive_select(self, query_str='', literals={}, columns='*', container='dict'):
+    def recursive_select(self, query_str='', literals={}, columns='*', container='dict', dedupe=True):
         """Recursive select of columns to return for rows matching query_str.
 
         Recursion is defined by the ptr_map (pointer map) in the table config.
@@ -267,13 +267,15 @@ class table():
             'namedtuple': Returns an iterator that returns namedtuples where values in the namedtuples are in the
                 order of columns & have column names.
             Any other value: Returns an iterator that returns dicts where the keys are column names.
+        dedupe (bool): Duplicate entries are removed from the result when True.
 
         Returns
         -------
         (iterator('container')): An iterator of the values specified by columns for the specified recursive query_str
             and pointer map.
         """
-        return self._return_container(columns, self.raw.recursive_select(query_str, literals, columns), container)
+        values = self.raw.recursive_select(query_str, literals, columns, dedupe=dedupe)
+        return self._return_container(columns, values, container)
 
     def upsert(self, values_dict, update_str=None, literals={}, returning=tuple(), container='dict', exclude=tuple()):
         """Upsert values.

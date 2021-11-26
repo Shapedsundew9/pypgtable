@@ -83,7 +83,7 @@ _TABLE_INDEX_SQL = sql.SQL("CREATE INDEX {0} ON {1}")
 _TABLE_INDEX_COLUMN_SQL = sql.SQL("({0})")
 _TABLE_DELETE_TABLE_SQL = sql.SQL("DROP TABLE IF EXISTS {0} CASCADE")
 _TABLE_RECURSIVE_SELECT = sql.SQL(
-    "WITH RECURSIVE rq AS (SELECT {0} FROM {1} {2} UNION SELECT {3} FROM {1} t INNER JOIN rq r ON {4}) SELECT * FROM rq")
+    "WITH RECURSIVE rq AS (SELECT {0} FROM {1} {2} UNION {5}SELECT {3} FROM {1} t INNER JOIN rq r ON {4}) SELECT * FROM rq")
 _TABLE_SELECT_SQL = sql.SQL("SELECT {0} FROM {1} {2}")
 _TABLE_INSERT_SQL = sql.SQL("INSERT INTO {0} ({1}) VALUES {2} ON CONFLICT ")
 _TABLE_INSERT_CONFLICT_STR = "DO NOTHING"
@@ -482,7 +482,10 @@ class raw_table():
         sql_str = _TABLE_SELECT_SQL.format(columns, self._table, sql.SQL(query_str).format(**format_dict))
         return self._db_transaction(sql_str, ctype=ctype)
 
-    def recursive_select(self, query_str, literals={}, columns='*', ctype='tuple'):
+    # TODO: Add delta (results in A but not in B) & intersection (results in A & B) recursive queries
+    # https://www.postgresql.org/docs/8.3/queries-union.html
+
+    def recursive_select(self, query_str, literals={}, columns='*', ctype='tuple', dedupe=True):
         """Recursive select of columns to return for rows matching query_str.
 
         Recursion is defined by the ptr_map (pointer map) in the table config.
@@ -505,6 +508,7 @@ class raw_table():
         literals (dict): Keys are labels used in query_str. Values are literals to replace the labels.
         columns (iter): The columns to be returned on update. If '*' defined all columns are returned.
         ctype (str): One of 'tuple', 'namedtuple', 'dict'
+        dedupe (bool): Duplicate entries are removed from the result when True.
 
         Returns
         -------
@@ -524,8 +528,9 @@ class raw_table():
         t_columns = sql.SQL('t.') + sql.SQL(', t.').join(map(sql.Identifier, columns))
         columns = sql.SQL(', ').join(map(sql.Identifier, columns))
         format_dict = self._format_dict(literals)
+        _all = '' if dedupe else 'ALL '
         sql_str = _TABLE_RECURSIVE_SELECT.format(columns, self._table, sql.SQL(
-            query_str).format(**format_dict), t_columns, self._pm_sql)
+            query_str).format(**format_dict), t_columns, self._pm_sql, dedupe)
         return self._db_transaction(sql_str, ctype=ctype)
 
     def _format_dict(self, literals):
