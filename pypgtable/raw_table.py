@@ -528,9 +528,8 @@ class raw_table():
         t_columns = sql.SQL('t.') + sql.SQL(', t.').join(map(sql.Identifier, columns))
         columns = sql.SQL(', ').join(map(sql.Identifier, columns))
         format_dict = self._format_dict(literals)
-        _all = '' if dedupe else 'ALL '
         sql_str = _TABLE_RECURSIVE_SELECT.format(columns, self._table, sql.SQL(
-            query_str).format(**format_dict), t_columns, self._pm_sql, dedupe)
+            query_str).format(**format_dict), t_columns, self._pm_sql, sql.SQL(('ALL ', '')[dedupe]))
         return self._db_transaction(sql_str, ctype=ctype)
 
     def _format_dict(self, literals):
