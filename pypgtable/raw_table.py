@@ -92,8 +92,6 @@ _TABLE_UPDATE_SQL = sql.SQL("UPDATE {0} SET {1} WHERE {2}")
 _TABLE_DELETE_SQL = sql.SQL("DELETE FROM {0} WHERE {1}")
 _TABLE_RETURNING_SQL = sql.SQL(" RETURNING ")
 _DEFAULT_UPDATE_STR = "{{{0}}}={{EXCLUDED.{0}}}"
-_SQL_TUPLE_FILTER = lambda x: isinstance(x[1], tuple) and not x[1]
-_SQL_EMPTY_TUPLE = (None,)
 
 
 def default_config():
@@ -125,7 +123,7 @@ class raw_table():
         self.creator = False
         self.populate = populate
         self._table = sql.Identifier(self.config['table'])
-        self._pm, self._pm_columns, self._pm_sql = self._ptr_map_def()
+        self.ptr_map_def(self.config['ptr_map'])
         if self.config['delete_db']:
             self.delete_db()
         if not self._db_exists() and self.config['create_db']:
@@ -158,8 +156,8 @@ class raw_table():
                     return k
         return None
 
-    def _ptr_map_def(self):
-        """Pre-process the pointer map into a usable form.
+    def ptr_map_def(self, ptr_map):
+        """Define how a recursive select traverses the graph.
 
         If the rows in the table define nodes in a graph then the pointer map defines
         the edges between nodes.
@@ -169,18 +167,12 @@ class raw_table():
             ...
         }
         where columns X contains a reference to a node identified by column Y.
-
-        Returns
-        -------
-        (dict): self.config['ptr_map']
-        (set): The columns used in the pointer map
-        (sql.SQL): An partial SQL statement to be used in a recursive select statement.
         """
-        pm_columns = set(self.config['ptr_map'].keys()) | set(self.config['ptr_map'].values())
         pm_sql = [sql.SQL('r.') + sql.Identifier(r) + sql.SQL("=t.") +
-                  sql.Identifier(i) for r, i in self.config['ptr_map'].items()]
-        pm_sql = sql.SQL(" OR ").join(pm_sql)
-        return self.config['ptr_map'], pm_columns, pm_sql
+                  sql.Identifier(i) for r, i in ptr_map.items()]
+        self._pm_sql = sql.SQL(" OR ").join(pm_sql)
+        self._pm = deepcopy(ptr_map)
+        self._pm_columns = set(ptr_map.keys()) | set(ptr_map.values())
 
     def _db_exists(self):
         if self._db is not None:
