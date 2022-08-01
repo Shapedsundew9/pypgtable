@@ -56,10 +56,13 @@ class _raw_table_config_validator(BaseValidator):
         for k, v in value.items():
             if v in value.keys():
                 self._error(field, "Circular reference {} -> {}".format(v, value[v]))
-            if k not in self.document['schema'].keys():
-                self._error(field, "Key {} is not a field.".format(k))
-            if v not in self.document['schema'].keys():
-                self._error(field, "Value {} is not a field.".format(v))
+            if 'schema' in self.document:
+                if k not in self.document['schema'].keys():
+                    self._error(field, "Key {} is not a field.".format(k))
+                if v not in self.document['schema'].keys():
+                    self._error(field, "Value {} is not a field.".format(v))
+            else:
+                _logger.info("Table schema will be auto-discovered. Cannot validate ptr_map columns exist.")
 
     def _check_with_valid_file_folder(self, field, value):
         """Validate data file folder exist if validate is set."""

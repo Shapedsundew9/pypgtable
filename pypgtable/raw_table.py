@@ -34,6 +34,8 @@ register_token_code("E05003", "Existing database table {table} columns do not ma
                     "UNIQUE constraint is inconsistent.")
 register_token_code("E05004", "Existing database table {table} columns do not match configuration. Column {column} "
                     "NOT NULL constraint is inconsistent.")
+register_token_code("E05005", "Table {table} does not exist in database {dbname} and will not be created.")
+register_token_code("E05006", "Recursive select on table {table} requires ptr_map to be configured.")
 
 
 _INITIAL_DELAY = 0.125
@@ -132,6 +134,8 @@ class raw_table():
             self.delete_table()
         create_table = not self._table_exists() and self.config['create_table']
         self._columns = self._create_table() if create_table else self._table_definition()
+        if not create_table and not self._columns:
+            raise ValueError(text_token({'E05005': {'table': self.config['table'], 'dbname': self.config['database']['dbname']}}))
 
     def __len__(self):
         """Return the number of entries in the table."""
@@ -510,6 +514,9 @@ class raw_table():
             'namedtuple': NamedTupleCursor
             'dict': DictCursor
         """
+        if not self._pm:
+            raise ValueError(text_token({'E05006': {'table': self.config['table']}}))
+
         if columns == '*':
             columns = self._columns
         else:
