@@ -676,6 +676,15 @@ def test_arbitrary_sql_return():
     assert result == approx(6.0)
 
 
+def test_arbitrary_sql_literals():
+    """Execute some arbitrary SQL."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    t = raw_table(config)
+    result = t.arbitrary_sql('SELECT {two}::REAL * {three}::REAL', {'two': 2.0, 'three': 3.0})[0][0]
+    assert result == approx(6.0)
+
+
 def test_arbitrary_sql_no_return():
     """Execute some arbitrary SQL that returns no result."""
     _logger.debug(stack()[0][3])
