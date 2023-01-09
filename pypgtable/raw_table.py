@@ -63,8 +63,10 @@ _TYPE_ALIGNMENTS = {
     "SERIAL": 4,
     "SERIAL4": 4,
     "TIME": 8,
-    "TIMESTAMP": 8
+    "TIMESTAMP": 8,
+    "UUID":8
 }
+TYPES = tuple(_TYPE_ALIGNMENTS.keys())
 _TABLE_LEN_SQL = sql.SQL("SELECT COUNT(*) FROM {0}")
 _TABLE_EXISTS_SQL = sql.SQL(
     "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = {0})")

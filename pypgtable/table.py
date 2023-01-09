@@ -7,7 +7,7 @@ from logging import NullHandler, getLogger, DEBUG
 from os.path import join
 from collections import namedtuple
 
-from .raw_table import raw_table
+from .raw_table import raw_table, TYPES
 from .utils.text_token import text_token
 
 

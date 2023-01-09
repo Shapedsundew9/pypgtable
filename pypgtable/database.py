@@ -23,7 +23,7 @@ from psycopg2 import (InterfaceError, OperationalError, ProgrammingError,
 from psycopg2.extensions import (ISOLATION_LEVEL_DEFAULT,
                                  ISOLATION_LEVEL_REPEATABLE_READ)
 from psycopg2.extensions import cursor as TupleCursor
-from psycopg2.extras import NamedTupleCursor, DictCursor
+from psycopg2.extras import NamedTupleCursor, DictCursor, register_uuid
 
 from .common import backoff_generator
 from .utils.text_token import register_token_code, text_token
@@ -32,6 +32,8 @@ _connections = {}
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
 
+# psycopg2 registrations
+register_uuid()
 
 register_token_code(
     'W04000',
