@@ -101,6 +101,26 @@ class table():
         self._conversions.update({c: {'encode': e, 'decode': d} for c, e, d in self.raw.config['conversions']})
         self._populate_table()
 
+    def __contains__(self, pk_value):
+        """Query the table if the primary key value pk_value exists.
+
+        Args
+        ----
+        pk_value (obj): A primary key value.
+
+        Returns
+        -------
+        (bool) True if pk_value is a primary key.
+        """
+        if self.raw._primary_key is None:
+            raise ValueError("SELECT row on primary key but no primary key defined!")
+        encoded_pk_value = self.encode_value(self.raw._primary_key, pk_value)
+        try:
+            next(self.select('WHERE {' + self.raw._primary_key + '} = {_pk_value}', {'_pk_value': encoded_pk_value}))
+        except StopIteration:
+            raise False
+        return True
+
     def __getitem__(self, pk_value):
         """Query the table for the row with primary key value pk_value.
 
