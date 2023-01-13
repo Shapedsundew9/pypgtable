@@ -1,6 +1,5 @@
 {
     "dbname": {
-        "required": true,
         "type": "string",
         "minlength": 1,
         "maxlength": 64,

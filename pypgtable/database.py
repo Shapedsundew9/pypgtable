@@ -26,7 +26,7 @@ from psycopg2.extensions import cursor as TupleCursor
 from psycopg2.extras import NamedTupleCursor, DictCursor, register_uuid
 
 from .common import backoff_generator
-from .utils.text_token import register_token_code, text_token
+from egp_utils.text_token import register_token_code, text_token
 
 _connections = {}
 _logger = getLogger(__name__)
@@ -223,8 +223,11 @@ def db_reconnect(dbname, config):
                                                'config': config, 'backoff': backoff}}))
         sleep(backoff)
         connection, error = _connect_core(dbname, config)
-    if connection is None:
+    if error is not None:
         raise error
+    if connection is None:
+        # FIXME: This is not the right exception
+        raise ValueError("Something went horribly wrong!")
     _connections[config['host']][dbname][get_ident()] = connection
     return connection
 
@@ -254,6 +257,7 @@ def _connect_core(dbname, config):
     user = config['user']
     password = config['password']
     err = None
+    connection = None
     try:
         connection = connect(host=host, port=port, user=user,
                              password=unobscure(password), dbname=dbname, connect_timeout=2)

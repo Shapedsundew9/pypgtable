@@ -12,9 +12,10 @@ from psycopg2 import ProgrammingError, errors, sql
 from .common import backoff_generator
 from .database import (db_connect, db_create, db_delete, db_exists,
                        db_transaction)
-from .utils.text_token import register_token_code, text_token
+from egp_utils.text_token import register_token_code, text_token
 from .validators import raw_table_column_config_validator as rtccv
 from .validators import raw_table_config_validator
+from typing import Any, Literal, Iterable
 
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
@@ -121,7 +122,7 @@ class raw_table():
         ----
         config (dict): The table configuration. See database/formats/raw_table_config_format.json.
         """
-        self._primary_key = self._db = self._columns = self._entry_validator = None
+        self._primary_key = self._db = self._entry_validator = None
         self.config = deepcopy(config)
         self._validate_config()
         self.creator = False
@@ -447,7 +448,7 @@ class raw_table():
             _logger.info(text_token({'I05000': {'sql': self._sql_to_string(sql_str)}}))
             self._db_transaction(sql_str, read=False)
 
-    def select(self, query_str='', literals={}, columns='*', ctype='tuple'):
+    def select(self, query_str: str='', literals: dict[str, Any]={}, columns: Literal['*'] | Iterable[str]='*', ctype: str='tuple'):
         """Select columns to return for rows matching query_str.
 
         Args
@@ -483,7 +484,7 @@ class raw_table():
     # TODO: Add delta (results in A but not in B) & intersection (results in A & B) recursive queries
     # https://www.postgresql.org/docs/8.3/queries-union.html
 
-    def recursive_select(self, query_str, literals={}, columns='*', ctype='tuple', dedupe=True):
+    def recursive_select(self, query_str: str, literals: dict[str, Any]={}, columns: Literal['*'] | Iterable[str]='*', ctype: str='tuple', dedupe: bool=True):
         """Recursive select of columns to return for rows matching query_str.
 
         Recursion is defined by the ptr_map (pointer map) in the table config.

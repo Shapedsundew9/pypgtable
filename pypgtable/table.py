@@ -6,10 +6,11 @@ from json import load
 from logging import NullHandler, getLogger, DEBUG
 from os.path import join
 from collections import namedtuple
+from typing import Any
 
 from .raw_table import raw_table, TYPES
-from .utils.text_token import text_token
-
+from egp_utils.text_token import text_token
+from typing import Any, Iterable, Literal
 
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
@@ -51,7 +52,8 @@ class gen_iter(_base_iter):
     def __init__(self, columns, values, _table, code='decode'):
         super().__init__(columns, values, _table, code)
 
-    def __next__(self):
+    # FIXME: Forced to type hint 'Any' as pylance unable to work out which iterator is returned.
+    def __next__(self) -> Any:
         """Return next value."""
         return (v if f is None else f(v) for f, v in zip(self.conversions, next(self.values)))
 
@@ -62,7 +64,8 @@ class tuple_iter(_base_iter):
     def __init__(self, columns, values, _table, code='decode'):
         super().__init__(columns, values, _table, code)
 
-    def __next__(self):
+    # FIXME: Forced to type hint 'Any' as pylance unable to work out which iterator is returned.
+    def __next__(self) -> Any:
         """Return next value."""
         return tuple((v if f is None else f(v) for f, v in zip(self.conversions, next(self.values))))
 
@@ -74,7 +77,8 @@ class namedtuple_iter(_base_iter):
         super().__init__(columns, values, _table, code)
         self.namedtuple = namedtuple('row', columns)
 
-    def __next__(self):
+    # FIXME: Forced to type hint 'Any' as pylance unable to work out which iterator is returned.
+    def __next__(self) -> Any:
         """Return next value."""
         return self.namedtuple((v if f is None else f(v) for f, v in zip(self.conversions, next(self.values))))
 
@@ -85,7 +89,8 @@ class dict_iter(_base_iter):
     def __init__(self, columns, values, _table, code='decode'):
         super().__init__(columns, values, _table, code)
 
-    def __next__(self):
+    # FIXME: Forced to type hint 'Any' as pylance unable to work out which iterator is returned.
+    def __next__(self) -> Any:
         """Return next value."""
         return {c: v if f is None else f(v) for c, f, v in zip(self.columns, self.conversions, next(self.values))}
 
@@ -118,7 +123,7 @@ class table():
         try:
             next(self.select('WHERE {' + self.raw._primary_key + '} = {_pk_value}', {'_pk_value': encoded_pk_value}))
         except StopIteration:
-            raise False
+            return False
         return True
 
     def __getitem__(self, pk_value):
@@ -233,7 +238,7 @@ class table():
         return conversion(value) if conversion is not None else value
 
 
-    def select(self, query_str='', literals={}, columns='*', container='dict'):
+    def select(self, query_str: str='', literals: dict[str, Any]={}, columns: Literal['*'] | Iterable[str]='*', container: str='dict') -> Any:
         """Select columns to return for rows matching query_str.
 
         Args
@@ -259,7 +264,7 @@ class table():
         """
         return self._return_container(columns, self.raw.select(query_str, literals, columns), container)
 
-    def recursive_select(self, query_str='', literals={}, columns='*', container='dict', dedupe=True):
+    def recursive_select(self, query_str: str='', literals: dict[str, Any]={}, columns: Literal['*'] | Iterable[str]='*', container: str='dict', dedupe: bool=True):
         """Recursive select of columns to return for rows matching query_str.
 
         Recursion is defined by the ptr_map (pointer map) in the table config.

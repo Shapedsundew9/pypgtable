@@ -18,6 +18,7 @@
         }
     },
     "schema": {
+        "required": true,
         "type": "dict",
         "minlength": 1,
         "maxlength": 1600,

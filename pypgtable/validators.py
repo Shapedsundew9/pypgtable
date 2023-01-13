@@ -1,24 +1,24 @@
-"""Validators for database."""
-
-
+"""Validators for pypgtable."""
 from copy import deepcopy
 from json import load
-from logging import NullHandler, getLogger
+from logging import NullHandler, getLogger, Logger
 from os.path import dirname, join
+from egp_utils.base_validator import base_validator
+from typing import Any
 
-from .utils.base_validator import BaseValidator
-
-_logger = getLogger(__name__)
+_logger: Logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
 
 
 with open(join(dirname(__file__), "formats/database_config_format.json"), "r") as file_ptr:
-    database_config_validator = BaseValidator(load(file_ptr), purge_unknown=True)
+    PYPGTABLE_DB_CONFIG_SCHEMA: dict[str, dict[str, Any]] = load(file_ptr)
+database_config_validator: base_validator = base_validator(PYPGTABLE_DB_CONFIG_SCHEMA, purge_unknown=True)
 with open(join(dirname(__file__), "formats/raw_table_column_config_format.json"), "r") as file_ptr:
-    raw_table_column_config_validator = BaseValidator(load(file_ptr), purge_unknown=True)
+    PYPGTABLE_COLUMN_CONFIG_SCHEMA: dict[str, dict[str, Any]] = load(file_ptr)
+raw_table_column_config_validator: base_validator = base_validator(PYPGTABLE_COLUMN_CONFIG_SCHEMA, purge_unknown=True)
 
 
-class _raw_table_config_validator(BaseValidator):
+class _raw_table_config_validator(base_validator):
 
     def sub_normalized(self, document):
         """Normalize sub-documents."""
