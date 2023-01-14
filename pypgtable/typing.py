@@ -1,5 +1,9 @@
 """pypgtable typing."""
-from typing import TypedDict, NotRequired, LiteralString, Callable, Any
+from typing import (Any, Callable, Iterable, Literal, LiteralString,
+                    NotRequired, TypedDict)
+
+from .row_iterators import dict_iter, gen_iter, namedtuple_iter, tuple_iter
+
 
 class DatabaseConfig(TypedDict):
     dbname: NotRequired[str]
@@ -10,6 +14,7 @@ class DatabaseConfig(TypedDict):
     maintenance_db: NotRequired[str]
     retries: NotRequired[int]
 
+
 class DatabaseConfigNorm(TypedDict):
     dbname: str
     host: str
@@ -18,6 +23,7 @@ class DatabaseConfigNorm(TypedDict):
     port: int
     maintenance_db: str
     retries: int
+
 
 class SchemaColumn(TypedDict):
     type: str
@@ -29,6 +35,7 @@ class SchemaColumn(TypedDict):
     index: NotRequired[str]
     unique: NotRequired[bool]
 
+
 class SchemaColumnNorm(TypedDict):
     type: str
     volatile: bool
@@ -39,11 +46,14 @@ class SchemaColumnNorm(TypedDict):
     index: NotRequired[str]
     unique: bool
 
+
 ConversionFunc = Callable[[Any], Any] | None
 Conversion = tuple[LiteralString, ConversionFunc, ConversionFunc] | list[LiteralString | ConversionFunc]
 Conversions = tuple[Conversion, ...]
 PtrMap = dict[str, str]
 TableSchema = dict[str, SchemaColumn]
+
+
 class TableConfig(TypedDict):
     database: NotRequired[DatabaseConfig]
     table: str
@@ -59,7 +69,10 @@ class TableConfig(TypedDict):
     wait_for_table: NotRequired[bool]
     conversions: NotRequired[Conversions]
 
+
 TableSchemaNorm = dict[str, SchemaColumnNorm]
+
+
 class TableConfigNorm(TypedDict):
     database: DatabaseConfigNorm
     table: str
@@ -74,3 +87,6 @@ class TableConfigNorm(TypedDict):
     wait_for_db: bool
     wait_for_table: bool
     conversions: Conversions
+
+
+RowIter = tuple_iter | namedtuple_iter | gen_iter | dict_iter

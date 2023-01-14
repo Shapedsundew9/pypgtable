@@ -3,96 +3,19 @@
 
 from copy import deepcopy
 from json import load
-from logging import NullHandler, getLogger, DEBUG
+from logging import DEBUG, NullHandler, getLogger
 from os.path import join
-from collections import namedtuple
-from typing import Any
-
-from .raw_table import raw_table, TYPES
-from egp_utils.text_token import text_token
 from typing import Any, Iterable, Literal
+
+from egp_utils.text_token import text_token
+
+from .raw_table import raw_table
+from .row_iterators import dict_iter, gen_iter, namedtuple_iter, tuple_iter
+from .typing import RowIter
 
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
 _LOG_DEBUG = _logger.isEnabledFor(DEBUG)
-
-
-class _base_iter():
-    """Iterator returning a container of decoded values from values.
-
-    The order of the containers returned is the same as the rows of values in values.
-    Each value is decoded by the registered conversion function (see register_conversion()) or
-    unchanged if no conversion has been registered.
-    """
-
-    def __init__(self, columns, values, _table, code='decode'):
-        """Initialise.
-
-        Args
-        ----
-        columns (iter(str)): Column names for each of the rows in values.
-        values  (row_iter): Iterator over rows (tuples) with values in the order as columns.
-        """
-        self.values = values
-        self.conversions = [_table._conversions[column][code] for column in columns]
-        self.columns = columns
-
-    def __iter__(self):
-        """Self iteration."""
-        return self
-
-    def __next__(self):
-        """Never gets run."""
-        raise NotImplementedError
-
-
-class gen_iter(_base_iter):
-    """Iterator returning a generator for decoded values from values."""
-
-    def __init__(self, columns, values, _table, code='decode'):
-        super().__init__(columns, values, _table, code)
-
-    # FIXME: Forced to type hint 'Any' as pylance unable to work out which iterator is returned.
-    def __next__(self) -> Any:
-        """Return next value."""
-        return (v if f is None else f(v) for f, v in zip(self.conversions, next(self.values)))
-
-
-class tuple_iter(_base_iter):
-    """Iterator returning a tuple for decoded values from values."""
-
-    def __init__(self, columns, values, _table, code='decode'):
-        super().__init__(columns, values, _table, code)
-
-    # FIXME: Forced to type hint 'Any' as pylance unable to work out which iterator is returned.
-    def __next__(self) -> Any:
-        """Return next value."""
-        return tuple((v if f is None else f(v) for f, v in zip(self.conversions, next(self.values))))
-
-
-class namedtuple_iter(_base_iter):
-    """Iterator returning a namedtuple for decoded values from values."""
-
-    def __init__(self, columns, values, _table, code='decode'):
-        super().__init__(columns, values, _table, code)
-        self.namedtuple = namedtuple('row', columns)
-
-    # FIXME: Forced to type hint 'Any' as pylance unable to work out which iterator is returned.
-    def __next__(self) -> Any:
-        """Return next value."""
-        return self.namedtuple((v if f is None else f(v) for f, v in zip(self.conversions, next(self.values))))
-
-
-class dict_iter(_base_iter):
-    """Iterator returning a dict for decoded values from values."""
-
-    def __init__(self, columns, values, _table, code='decode'):
-        super().__init__(columns, values, _table, code)
-
-    # FIXME: Forced to type hint 'Any' as pylance unable to work out which iterator is returned.
-    def __next__(self) -> Any:
-        """Return next value."""
-        return {c: v if f is None else f(v) for c, f, v in zip(self.columns, self.conversions, next(self.values))}
 
 
 class table():
@@ -145,7 +68,6 @@ class table():
         except StopIteration:
             raise KeyError
 
-
     def __setitem__(self, pk_value, values):
         """Upsert the row with primary key pk_value using values.
 
@@ -191,7 +113,7 @@ class table():
         """Return a tuple of all column names."""
         return self.raw._columns
 
-    def _return_container(self, columns, values, container='dict'):
+    def _return_container(self, columns, values, container='dict') -> RowIter:
         if columns == '*':
             columns = self.raw._columns
         if container == 'tuple':
@@ -237,8 +159,8 @@ class table():
         conversion = self._conversions[column]['encode']
         return conversion(value) if conversion is not None else value
 
-
-    def select(self, query_str: str='', literals: dict[str, Any]={}, columns: Literal['*'] | Iterable[str]='*', container: str='dict') -> Any:
+    def select(self, query_str: str = '', literals: dict[str, Any] = {},
+               columns: Literal['*'] | Iterable[str] = '*', container: str = 'dict') -> RowIter:
         """Select columns to return for rows matching query_str.
 
         Args
@@ -264,7 +186,13 @@ class table():
         """
         return self._return_container(columns, self.raw.select(query_str, literals, columns), container)
 
-    def recursive_select(self, query_str: str='', literals: dict[str, Any]={}, columns: Literal['*'] | Iterable[str]='*', container: str='dict', dedupe: bool=True):
+    def recursive_select(self,
+                         query_str: str = '',
+                         literals: dict[str,
+                                        Any] = {},
+                         columns: Literal['*'] | Iterable[str] = '*',
+                         container: str = 'dict',
+                         dedupe: bool = True) -> RowIter:
         """Recursive select of columns to return for rows matching query_str.
 
         Recursion is defined by the ptr_map (pointer map) in the table config.
@@ -302,7 +230,7 @@ class table():
         values = self.raw.recursive_select(query_str, literals, columns, dedupe=dedupe)
         return self._return_container(columns, values, container)
 
-    def upsert(self, values_dict, update_str=None, literals={}, returning=tuple(), container='dict', exclude=tuple()):
+    def upsert(self, values_dict, update_str=None, literals={}, returning=tuple(), container='dict', exclude=tuple()) -> RowIter:
         """Upsert values.
 
         If update_str is None each entry will be inserted or replace the existing entry on conflict.
@@ -341,7 +269,7 @@ class table():
                 retval.extend(results)
         return self._return_container(returning, iter(retval), container)
 
-    def insert(self, values_dict, returning=tuple(), container='dict', exclude=tuple()):
+    def insert(self, values_dict, returning=tuple(), container='dict', exclude=tuple()) -> RowIter:
         """Insert values.
 
         Args
@@ -364,7 +292,7 @@ class table():
                 retval.extend(results)
         return self._return_container(returning, iter(retval), container)
 
-    def update(self, update_str, query_str, literals={}, returning=tuple(), container='dict'):
+    def update(self, update_str, query_str, literals={}, returning=tuple(), container='dict') -> RowIter:
         """Update rows.
 
         Each row matching the query_str will be updated by the update_str.
@@ -394,7 +322,7 @@ class table():
         """
         return self._return_container(returning, self.raw.update(update_str, query_str, literals, returning), container)
 
-    def delete(self, query_str, literals={}, returning=tuple(), container='dict'):
+    def delete(self, query_str, literals={}, returning=tuple(), container='dict') -> RowIter:
         """Delete rows from the table.
 
         If query_str is not specified all rows in the table are deleted.
