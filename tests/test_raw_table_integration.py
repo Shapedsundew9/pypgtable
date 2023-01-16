@@ -12,7 +12,8 @@ from pytest import approx
 
 from pypgtable import default_config, raw_table
 from pypgtable.database import db_transaction
-from pypgtable.utils.reference import sequential_reference
+
+from itertools import count
 
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
@@ -96,7 +97,7 @@ def test_wait_for_table_creation(monkeypatch):
     config['create_table'] = False
     config['delete_table'] = False
 
-    mock_ref = sequential_reference()
+    mock_ref = count()
 
     def mock_table_exists(*args, **kwargs):
         return (False, False, True)[next(mock_ref)]
@@ -120,7 +121,7 @@ def test_wait_for_db_creation(monkeypatch):
     config['create_db'] = False
     config['delete_db'] = False
 
-    mock_ref = sequential_reference()
+    mock_ref = count()
 
     def mock_db_exists(*args, **kwargs):
         return (True, True, False, True, True)[next(mock_ref)]

@@ -14,7 +14,7 @@ from pypgtable.database import (_DB_TRANSACTION_ATTEMPTS, _clean_connections,
                                 _connect_core, db_connect, db_create,
                                 db_delete, db_disconnect, db_disconnect_all,
                                 db_exists, db_reconnect, db_transaction)
-from pypgtable.utils.reference import sequential_reference
+from itertools import count
 
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
@@ -324,8 +324,8 @@ def test_db_transaction_p0(monkeypatch):
     A single cursor should be returned.
     """
     db_disconnect_all()
-    mock_connection_ref = sequential_reference()
-    mock_cursor_ref = sequential_reference()
+    mock_connection_ref = count()
+    mock_cursor_ref = count()
 
     class mock_cursor():
         def __init__(self) -> None: self.value = next(mock_cursor_ref)
@@ -385,7 +385,7 @@ def test_db_transaction_n4(monkeypatch):
 def test_db_exists_p0(monkeypatch):
     """Test the case when the DB exists."""
     db_disconnect_all()
-    mock_connection_ref = sequential_reference()
+    mock_connection_ref = count()
 
     class mock_cursor():
         def __init__(self) -> None: self.value = (_MOCK_DBNAME,)
@@ -413,8 +413,8 @@ def test_db_exists_p0(monkeypatch):
 def test_db_exists_p1(monkeypatch):
     """Test the case when the DB does not exist."""
     db_disconnect_all()
-    mock_connection_ref = sequential_reference()
-    mock_cursor_ref = sequential_reference()
+    mock_connection_ref = count()
+    mock_cursor_ref = count()
 
     class mock_cursor():
         def __init__(self) -> None: self.value = (_MOCK_DBNAME,)
@@ -469,8 +469,8 @@ def test_db_exists_n1(monkeypatch):
 def test_db_create_p0(monkeypatch):
     """Create a DB."""
     db_disconnect_all()
-    mock_connection_ref = sequential_reference()
-    mock_cursor_ref = sequential_reference()
+    mock_connection_ref = count()
+    mock_cursor_ref = count()
 
     class mock_cursor():
         def __init__(self) -> None: self.value = next(mock_cursor_ref)
@@ -495,8 +495,8 @@ def test_db_create_p0(monkeypatch):
 def test_db_delete_p0(monkeypatch):
     """Delete a DB."""
     db_disconnect_all()
-    mock_connection_ref = sequential_reference()
-    mock_cursor_ref = sequential_reference()
+    mock_connection_ref = count()
+    mock_cursor_ref = count()
 
     class mock_cursor():
         def __init__(self) -> None: self.value = next(mock_cursor_ref)

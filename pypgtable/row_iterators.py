@@ -1,6 +1,13 @@
 """Row iterators."""
 from collections import namedtuple
 from typing import Any, Self, Callable
+from psycopg2.extensions import cursor
+from logging import DEBUG, NullHandler, getLogger, Logger
+
+
+_logger: Logger = getLogger(__name__)
+_logger.addHandler(NullHandler())
+_LOG_DEBUG: bool = _logger.isEnabledFor(DEBUG)
 
 
 class _base_iter():
@@ -30,6 +37,11 @@ class _base_iter():
     def __next__(self) -> Any:
         """Never gets run."""
         raise NotImplementedError
+
+    def __del__(self) -> None:
+        if isinstance(self.values, cursor):
+            _logger.debug("Closing held DB cursor.")
+            self.values.close()
 
 
 class gen_iter(_base_iter):

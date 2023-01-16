@@ -414,7 +414,7 @@ def db_transaction(dbname, config, sql_str, read=True, recons=_DB_RECONNECTIONS,
             token2['attempt'] = transaction_attempt
             connection = db_connect(dbname, config)
             if read:
-                cursor = connection.cursor(name=next(_CURSOR_NAME), cursor_factory=cursor_type)
+                cursor = connection.cursor(name=next(_CURSOR_NAME), cursor_factory=cursor_type, withhold=True)
                 cursor.itersize = _ITERSIZE
             else:
                 cursor = connection.cursor(cursor_factory=cursor_type)

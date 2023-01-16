@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 from json import load
-from logging import DEBUG, NullHandler, getLogger
+from logging import DEBUG, NullHandler, getLogger, Logger
 from os.path import join
 from pprint import pformat
 from time import sleep
@@ -17,9 +17,9 @@ from .validators import raw_table_column_config_validator as rtccv
 from .validators import raw_table_config_validator
 from typing import Any, Literal, Iterable
 
-_logger = getLogger(__name__)
+_logger: Logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
-_LOG_DEBUG = _logger.isEnabledFor(DEBUG)
+_LOG_DEBUG: bool = _logger.isEnabledFor(DEBUG)
 
 
 register_token_code("I05000", "SQL: {sql}")
@@ -310,7 +310,7 @@ class raw_table():
             if _LOG_DEBUG: _logger.debug(text_token({'I05003': {'table': self.config['table'], 'dbname': dbname, 'backoff': backoff}}))
             sleep(backoff)
         results = tuple(self._db_transaction(_TABLE_DEFINITION_SQL.format(sql.Literal(self.config['table']))))
-        columns = tuple((column[0] for column in results))
+        columns = set((column[0] for column in results))
         schema = {c: rtccv.normalized({'type': d.upper(), 'nullable': n == 'YES'}) for c, d, n in results}
         constraints = self._db_transaction(_TABLE_GET_PRIMARY_KEY_SQL.format(sql.Literal(self.config['table'])))
         for column, constraint in constraints:
@@ -321,7 +321,7 @@ class raw_table():
         self._primary_key = self._get_primary_key()
         _logger.debug("Table {} schema:\n{}".format(self.config['table'], pformat(self.config['schema'])))
 
-        unmatched_set = set(columns) - set(self.config['schema'].keys())
+        unmatched_set = columns - set(self.config['schema'].keys())
         if unmatched_set:
             token = text_token({'E05001': {
                           'set': unmatched_set, 'dbname': self.config['database']['dbname'], 'table': self.config['table']}})
@@ -398,7 +398,8 @@ class raw_table():
         -------
         (tuple(str)) Column names.
         """
-        columns, self._columns = [], []
+        columns: list[str] = []
+        self._columns: set[str] = set()
         definition_list = self._order_schema()
         _logger.info("Table will be created with columns in the order logged below.")
         for column, definition in definition_list:
@@ -411,7 +412,7 @@ class raw_table():
                 sql_str += " UNIQUE"
             if 'default' in definition:
                 sql_str += " DEFAULT " + definition['default']
-            self._columns.append(column)
+            self._columns.add(column)
             _logger.info("Column: {}, SQL Definition: {}, Alignment: {}".format(column, sql_str, definition['alignment']))
             columns.append(sql.Identifier(column) + sql.SQL(sql_str))
 
@@ -448,7 +449,7 @@ class raw_table():
             _logger.info(text_token({'I05000': {'sql': self._sql_to_string(sql_str)}}))
             self._db_transaction(sql_str, read=False)
 
-    def select(self, query_str: str='', literals: dict[str, Any]={}, columns: Literal['*'] | Iterable[str]='*', ctype: str='tuple'):
+    def select(self, query_str: str='', literals: dict[str, Any]={}, columns: Literal['*'] | str | Iterable[str]='*', ctype: str='tuple'):
         """Select columns to return for rows matching query_str.
 
         Args
@@ -536,7 +537,7 @@ class raw_table():
 
     def _format_dict(self, literals):
         """Create a formatting dict of literals and column identifiers."""
-        dupes = [literal for literal in filter(lambda x: x in self._columns, literals.keys())]
+        dupes: set[str] = set(literals.keys()).intersection(self._columns)
         if dupes:
             raise ValueError("Literals cannot have keys that are the names of table columns:{}".format(dupes))
         format_dict = {k: sql.Identifier(k) for k in self._columns}
