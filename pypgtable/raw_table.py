@@ -93,7 +93,8 @@ _TABLE_SELECT_SQL = sql.SQL("SELECT {0} FROM {1} {2}")
 _TABLE_INSERT_SQL = sql.SQL("INSERT INTO {0} ({1}) VALUES {2} ON CONFLICT ")
 _TABLE_INSERT_CONFLICT_STR = "DO NOTHING"
 _TABLE_UPSERT_CONFLICT_STR = "{0} DO UPDATE SET "
-_TABLE_UPDATE_SQL = sql.SQL("UPDATE {0} SET {1} WHERE {2}")
+_TABLE_UPDATE_WHERE_SQL = sql.SQL("UPDATE {0} SET {1} WHERE {2}")
+_TABLE_UPDATE_SQL = sql.SQL("UPDATE {0} SET {1}")
 _TABLE_DELETE_SQL = sql.SQL("DELETE FROM {0} WHERE {1}")
 _TABLE_RETURNING_SQL = sql.SQL(" RETURNING ")
 _DEFAULT_UPDATE_STR = "{{{0}}}={{EXCLUDED.{0}}}"
@@ -606,7 +607,7 @@ class raw_table():
         """
         return self.upsert(columns, values, _TABLE_INSERT_CONFLICT_STR, returning=returning)
 
-    def update(self, update_str, query_str, literals={}, returning=tuple(), ctype='tuple'):
+    def update(self, update_str, query_str=None, literals={}, returning=tuple(), ctype='tuple'):
         """Update rows.
 
         Each row matching the query_str will be updated by the update_str.
@@ -633,8 +634,11 @@ class raw_table():
         if returning == '*':
             returning = self._columns
         format_dict = self._format_dict(literals)
-        sql_str = _TABLE_UPDATE_SQL.format(self._table, sql.SQL(update_str).format(
-            **format_dict), sql.SQL(query_str).format(**format_dict))
+        if query_str is not None:
+            sql_str = _TABLE_UPDATE_WHERE_SQL.format(self._table, sql.SQL(update_str).format(
+                **format_dict), sql.SQL(query_str).format(**format_dict))
+        else:
+            sql_str = _TABLE_UPDATE_SQL.format(self._table, sql.SQL(update_str).format(**format_dict))
         if returning:
             sql_str += _TABLE_RETURNING_SQL + sql.SQL(',').join([sql.Identifier(column) for column in returning])
         return self._db_transaction(sql_str, read=False, ctype=ctype)

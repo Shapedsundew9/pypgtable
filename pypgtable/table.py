@@ -292,7 +292,7 @@ class table():
                 retval.extend(results)
         return self._return_container(returning, iter(retval), container)
 
-    def update(self, update_str, query_str, literals={}, returning=tuple(), container='dict') -> RowIter:
+    def update(self, update_str, query_str=None, literals={}, returning=tuple(), container='dict') -> RowIter:
         """Update rows.
 
         Each row matching the query_str will be updated by the update_str.
