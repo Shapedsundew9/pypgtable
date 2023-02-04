@@ -3,6 +3,7 @@
 
 from copy import deepcopy
 from inspect import stack
+from itertools import count
 from json import load
 from logging import NullHandler, getLogger
 from os.path import dirname, join
@@ -12,8 +13,6 @@ from pytest import approx
 
 from pypgtable import default_config, raw_table
 from pypgtable.database import db_transaction
-
-from itertools import count
 
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
@@ -277,7 +276,7 @@ def test_recursive_select_1():
     rt = raw_table(config)
     data = rt.recursive_select('WHERE {id} = 2', columns=('id', 'uid', 'left', 'right'))
     assert list(data) == [(2, 102, 5, 6), (5, 105, 10, 11), (6, 106, None, 12),
-                    (10, 110, None, None), (11, 111, None, None), (12, 112, None, None)]
+                          (10, 110, None, None), (11, 111, None, None), (12, 112, None, None)]
 
 
 def test_recursive_select_2():
@@ -296,7 +295,7 @@ def test_recursive_select_no_ptr():
     rt = raw_table(config)
     data = rt.recursive_select('WHERE {id} = 2', columns=('id', 'uid', 'left'))
     assert list(data) == [(2, 102, 5, 6), (5, 105, 10, 11), (6, 106, None, 12),
-                    (10, 110, None, None), (11, 111, None, None), (12, 112, None, None)]
+                          (10, 110, None, None), (11, 111, None, None), (12, 112, None, None)]
 
 
 def test_insert():

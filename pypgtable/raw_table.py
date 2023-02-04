@@ -127,6 +127,7 @@ class raw_table():
         self.config = deepcopy(config)
         self._validate_config()
         self.creator = False
+        self.db_creator = False
         self.populate = populate
         self._table = sql.Identifier(self.config['table'])
         self.ptr_map_def(self.config['ptr_map'])
@@ -191,6 +192,7 @@ class raw_table():
     def _create_db(self):
         db_create(self.config['database']['dbname'], self.config['database'])
         self._db = True
+        self.db_creator = True
 
     def delete_db(self):
         """Delete the database."""

@@ -330,6 +330,22 @@ def test_update():
     assert list(row) == [(0, 1, 2, 100, None, "root_new")]
 
 
+def test_update_all_rows():
+    """Validate an update returning a dict."""
+    _logger.debug(stack()[0][3])
+    config = deepcopy(_CONFIG)
+    t = table(config)
+    returning = t.update('{left}={left}*{left}', literals={},
+                         returning=('id', 'left'), container='dict')
+    row = t.select('WHERE {id} = 0', columns=(
+        'id', 'left', 'right', 'uid', 'metadata', 'name'), container='tuple')
+    assert list(returning) == [{'id': 0, 'left': 1}, {'id': 1, 'left': 9}, {'id': 2, 'left': 25}, {'id': 4, 'left': 64},
+        {'id': 5, 'left': 100}, {'id': 3, 'left': 49}, {'id': 7, 'left': 169}, {'id': 6, 'left': None},
+        {'id': 8, 'left': None}, {'id': 9, 'left': None}, {'id': 10, 'left': None}, {'id': 11, 'left': None},
+        {'id': 12, 'left': None}, {'id': 13, 'left': None}]
+    assert list(row) == [(0, 1, 2, 100, None, "root")]
+
+
 def test_delete():
     """Validate a delete returning a tuple."""
     _logger.debug(stack()[0][3])
