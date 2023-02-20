@@ -113,11 +113,9 @@ class _raw_table_config_validator(base_validator):
 
 
 with open(join(dirname(__file__), "formats/raw_table_config_format.json"), "r", encoding="utf8") as file_ptr:
-    raw_table_config_validator: _raw_table_config_validator = _raw_table_config_validator(load(file_ptr), purge_unknown=True)
-
+    PYPGTABLE_TABLE_CONFIG_SCHEMA: dict[str, Any] = load(file_ptr)
+raw_table_config_validator: _raw_table_config_validator = _raw_table_config_validator(PYPGTABLE_TABLE_CONFIG_SCHEMA, purge_unknown=True)
 
 # Table validators are just aliases of the raw table validators (but not the same object)
 table_config_validator: base_validator = raw_table_column_config_validator
 table_column_config_validator: base_validator = deepcopy(raw_table_column_config_validator)
-
-# TODO need a table schema validator

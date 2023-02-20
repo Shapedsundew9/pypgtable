@@ -8,7 +8,7 @@ class DatabaseConfig(TypedDict):
     dbname: NotRequired[str]
     host: NotRequired[str]
     user: NotRequired[str]
-    password: NotRequired[str]
+    password: NotRequired[str | None]
     port: NotRequired[int]
     maintenance_db: NotRequired[str]
     retries: NotRequired[int]
@@ -18,7 +18,7 @@ class DatabaseConfigNorm(TypedDict):
     dbname: str
     host: str
     user: str
-    password: str
+    password: str | None
     port: int
     maintenance_db: str
     retries: int
