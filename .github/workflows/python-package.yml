@@ -15,14 +15,13 @@ jobs:
 
     # Run directly on runner VM
     runs-on: ubuntu-latest
-    container:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.8, 3.9]
+        python-version: [3.11]
     services:
       postgres:
-        image: postgres:12
+        image: postgres:15
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
