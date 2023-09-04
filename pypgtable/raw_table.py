@@ -8,7 +8,7 @@ from pprint import pformat
 from time import sleep
 from typing import Any, Iterable, Literal, Generator
 
-from egp_utils.text_token import register_token_code, text_token
+from text_token import register_token_code, text_token
 from psycopg2 import ProgrammingError, errors, sql
 
 from .common import backoff_generator

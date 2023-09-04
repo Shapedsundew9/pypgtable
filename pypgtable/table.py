@@ -7,7 +7,7 @@ from logging import DEBUG, NullHandler, getLogger, Logger
 from os.path import join
 from typing import Any, Iterable, Literal, Callable
 
-from egp_utils.text_token import text_token
+from text_token import text_token
 
 from .raw_table import raw_table
 from .row_iterators import dict_iter, gen_iter, namedtuple_iter, tuple_iter

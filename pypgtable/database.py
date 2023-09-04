@@ -18,7 +18,7 @@ from threading import get_ident
 from time import sleep
 from typing import Any, Generator
 
-from egp_utils.text_token import register_token_code, text_token
+from text_token import register_token_code, text_token
 from obscure_password import unobscure
 from psycopg2 import (
     InterfaceError,
