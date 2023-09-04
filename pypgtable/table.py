@@ -3,33 +3,35 @@
 
 from copy import deepcopy
 from json import load
-from logging import DEBUG, NullHandler, getLogger
+from logging import DEBUG, NullHandler, getLogger, Logger
 from os.path import join
-from typing import Any, Iterable, Literal
+from typing import Any, Iterable, Literal, Callable
 
 from egp_utils.text_token import text_token
 
 from .raw_table import raw_table
 from .row_iterators import dict_iter, gen_iter, namedtuple_iter, tuple_iter
-from .typing import RowIter
+from .pypgtable_typing import RowIter
 
-_logger = getLogger(__name__)
+_logger: Logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
-_LOG_DEBUG = _logger.isEnabledFor(DEBUG)
+_LOG_DEBUG: bool = _logger.isEnabledFor(DEBUG)
 
 
-class table():
+class table:
     """Wrap raw_table providing convinience functions for accessing & modifying a postgresql table."""
 
-    def __init__(self, config):
+    def __init__(self, config) -> None:
         """Create a table object."""
         self.raw = raw_table(config, populate=False)
         self._entry_validator = None
-        self._conversions = {column: {'encode': None, 'decode': None} for column in self.raw.config['schema']}
-        self._conversions.update({c: {'encode': e, 'decode': d} for c, e, d in self.raw.config['conversions']})
+        self._conversions: dict[str, dict[str, None | Callable]] = {
+            column: {"encode": None, "decode": None} for column in self.raw.config["schema"]
+        }
+        self._conversions.update({c: {"encode": e, "decode": d} for c, e, d in self.raw.config["conversions"]})
         self._populate_table()
 
-    def __contains__(self, pk_value):
+    def __contains__(self, pk_value) -> bool:
         """Query the table if the primary key value pk_value exists.
 
         Args
@@ -42,14 +44,19 @@ class table():
         """
         if self.raw._primary_key is None:
             raise ValueError("SELECT row on primary key but no primary key defined!")
-        encoded_pk_value = self.encode_value(self.raw._primary_key, pk_value)
+        encoded_pk_value: Any = self.encode_value(self.raw._primary_key, pk_value)
         try:
-            next(self.select('WHERE {' + self.raw._primary_key + '} = {_pk_value}', {'_pk_value': encoded_pk_value}))
+            next(
+                self.select(
+                    "WHERE {" + self.raw._primary_key + "} = {_pk_value}",
+                    {"_pk_value": encoded_pk_value},
+                )
+            )
         except StopIteration:
             return False
         return True
 
-    def __getitem__(self, pk_value):
+    def __getitem__(self, pk_value: Any) -> Any:
         """Query the table for the row with primary key value pk_value.
 
         Args
@@ -62,13 +69,18 @@ class table():
         """
         if self.raw._primary_key is None:
             raise ValueError("SELECT row on primary key but no primary key defined!")
-        encoded_pk_value = self.encode_value(self.raw._primary_key, pk_value)
+        encoded_pk_value: Any = self.encode_value(self.raw._primary_key, pk_value)
         try:
-            return next(self.select('WHERE {' + self.raw._primary_key + '} = {_pk_value}', {'_pk_value': encoded_pk_value}))
-        except StopIteration:
-            raise KeyError
+            return next(
+                self.select(
+                    "WHERE {" + self.raw._primary_key + "} = {_pk_value}",
+                    {"_pk_value": encoded_pk_value},
+                )
+            )
+        except StopIteration as stop_iteration:
+            raise KeyError("Primary key value not found in table!") from stop_iteration
 
-    def __setitem__(self, pk_value, values):
+    def __setitem__(self, pk_value: Any, values: Any) -> None:
         """Upsert the row with primary key pk_value using values.
 
         If values contains a different primary key value to pk_value, pk_value will
@@ -79,7 +91,7 @@ class table():
         pk_value (obj): A primary key value.
         values (obj): A dict of column:value
         """
-        new_values = deepcopy(values)
+        new_values: Any = deepcopy(values)
         new_values[self.raw._primary_key] = pk_value
         self.upsert((new_values,))
 
@@ -102,27 +114,26 @@ class table():
         Only executed if this instance of raw_table() created it.
         See self._create_table().
         """
-        if self.raw.creator and self.raw.config['data_files']:
-            for data_file in self.raw.config['data_files']:
-                abspath = join(self.raw.config['data_file_folder'], data_file)
-                _logger.info(text_token({'I05004': {'table': self.raw.config['table'], 'file': abspath}}))
-                with open(abspath, "r") as file_ptr:
+        if self.raw.creator and self.raw.config["data_files"]:
+            for data_file in self.raw.config["data_files"]:
+                abspath = join(self.raw.config["data_file_folder"], data_file)
+                _logger.info(text_token({"I05004": {"table": self.raw.config["table"], "file": abspath}}))
+                with open(abspath, "r", encoding="utf-8") as file_ptr:
                     self.insert(load(file_ptr))
 
-    def columns(self):
+    def columns(self) -> set[str]:
         """Return a tuple of all column names."""
-        return self.raw._columns
+        return self.raw.columns
 
-    def _return_container(self, columns, values, container='dict') -> RowIter:
-        if columns == '*':
-            columns = self.raw._columns
-        if container == 'tuple':
-            return tuple_iter(columns, values, self)
-        if container == 'namedtuple':
-            return namedtuple_iter(columns, values, self)
-        if container == 'generator':
-            return gen_iter(columns, values, self)
-        return dict_iter(columns, values, self)
+    def _return_container(self, columns: Iterable[str], values, container="dict") -> RowIter:
+        _columns: Iterable[str] = self.raw.columns if columns == "*" else columns
+        if container == "tuple":
+            return tuple_iter(_columns, values, self)
+        if container == "namedtuple":
+            return namedtuple_iter(_columns, values, self)
+        if container == "generator":
+            return gen_iter(_columns, values, self)
+        return dict_iter(_columns, values, self)
 
     def register_conversion(self, column, encode_func, decode_func):
         """Define functions to encode column into the table and decode it out.
@@ -138,8 +149,8 @@ class table():
         decode_func (f()): Takes a single object y and returns a single decoded object. y is the raw value
             returned from the table column. e.g. lambda y: decompress(y)
         """
-        self._conversions[column]['encode'] = encode_func
-        self._conversions[column]['decode'] = decode_func
+        self._conversions[column]["encode"] = encode_func
+        self._conversions[column]["decode"] = decode_func
 
     def encode_value(self, column, value):
         """Encode value using the registered conversion function for column.
@@ -156,11 +167,16 @@ class table():
         -------
         (obj): Encoded value
         """
-        conversion = self._conversions[column]['encode']
+        conversion = self._conversions[column]["encode"]
         return conversion(value) if conversion is not None else value
 
-    def select(self, query_str: str = '', literals: dict[str, Any] = {},
-               columns: Literal['*'] | Iterable[str] = '*', container: str = 'dict') -> RowIter:
+    def select(
+        self,
+        query_str: str = "",
+        literals: dict[str, Any] | None = None,
+        columns: Literal["*"] | Iterable[str] = "*",
+        container: str = "dict",
+    ) -> RowIter:
         """Select columns to return for rows matching query_str.
 
         Args
@@ -186,13 +202,14 @@ class table():
         """
         return self._return_container(columns, self.raw.select(query_str, literals, columns), container)
 
-    def recursive_select(self,
-                         query_str: str = '',
-                         literals: dict[str,
-                                        Any] = {},
-                         columns: Literal['*'] | Iterable[str] = '*',
-                         container: str = 'dict',
-                         dedupe: bool = True) -> RowIter:
+    def recursive_select(
+        self,
+        query_str: str = "",
+        literals: dict[str, Any] | None = None,
+        columns: Literal["*"] | Iterable[str] = "*",
+        container: str = "dict",
+        dedupe: bool = True,
+    ) -> RowIter:
         """Recursive select of columns to return for rows matching query_str.
 
         Recursion is defined by the ptr_map (pointer map) in the table config.
@@ -230,7 +247,15 @@ class table():
         values = self.raw.recursive_select(query_str, literals, columns, dedupe=dedupe)
         return self._return_container(columns, values, container)
 
-    def upsert(self, values_dict, update_str=None, literals={}, returning=tuple(), container='dict', exclude=tuple()) -> RowIter:
+    def upsert(
+        self,
+        values_dict,
+        update_str=None,
+        literals: dict[str, Any] | None = None,
+        returning=tuple(),
+        container="dict",
+        exclude=tuple(),
+    ) -> RowIter:
         """Upsert values.
 
         If update_str is None each entry will be inserted or replace the existing entry on conflict.
@@ -264,12 +289,18 @@ class table():
         """
         retval = []
         for columns, values in self.raw.batch_dict_data(values_dict, exclude):
-            results = self.raw.upsert(columns, tuple_iter(columns, iter(values), self, 'encode'), update_str, literals, returning)
+            results = self.raw.upsert(
+                columns,
+                tuple_iter(columns, iter(values), self, "encode"),
+                update_str,
+                literals,
+                returning,
+            )
             if returning:
                 retval.extend(results)
         return self._return_container(returning, iter(retval), container)
 
-    def insert(self, values_dict, returning=tuple(), container='dict', exclude=tuple()) -> RowIter:
+    def insert(self, values_dict, returning=tuple(), container="dict", exclude=tuple()) -> RowIter:
         """Insert values.
 
         Args
@@ -287,12 +318,19 @@ class table():
         """
         retval = []
         for columns, values in self.raw.batch_dict_data(values_dict, exclude):
-            results = self.raw.insert(columns, tuple_iter(columns, iter(values), self, 'encode'), returning)
+            results = self.raw.insert(columns, tuple_iter(columns, iter(values), self, "encode"), returning)
             if returning:
                 retval.extend(results)
         return self._return_container(returning, iter(retval), container)
 
-    def update(self, update_str, query_str=None, literals={}, returning=tuple(), container='dict') -> RowIter:
+    def update(
+        self,
+        update_str,
+        query_str=None,
+        literals: dict[str, Any] | None = None,
+        returning=tuple(),
+        container="dict",
+    ) -> RowIter:
         """Update rows.
 
         Each row matching the query_str will be updated by the update_str.
@@ -320,9 +358,13 @@ class table():
         (iterator('container')): An iterator of the values specified by returning for each updated row or [] if returning is
             an empty iterable or None.
         """
-        return self._return_container(returning, self.raw.update(update_str, query_str, literals, returning), container)
+        return self._return_container(
+            returning,
+            self.raw.update(update_str, query_str, literals, returning),
+            container,
+        )
 
-    def delete(self, query_str, literals={}, returning=tuple(), container='dict') -> RowIter:
+    def delete(self, query_str, literals: dict[str, Any] | None = None, returning=tuple(), container="dict") -> RowIter:
         """Delete rows from the table.
 
         If query_str is not specified all rows in the table are deleted.

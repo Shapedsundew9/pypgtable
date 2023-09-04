@@ -1,16 +1,16 @@
 """Row iterators."""
 from collections import namedtuple
-from typing import Any, Self, Callable
-from psycopg2.extensions import cursor
-from logging import DEBUG, NullHandler, getLogger, Logger
+from logging import DEBUG, Logger, NullHandler, getLogger
+from typing import Any, Callable, Self, Iterable
 
+from psycopg2.extensions import cursor
 
 _logger: Logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
 _LOG_DEBUG: bool = _logger.isEnabledFor(DEBUG)
 
 
-class _base_iter():
+class _base_iter:
     """Iterator returning a container of decoded values from values.
 
     The order of the containers returned is the same as the rows of values in values.
@@ -18,7 +18,7 @@ class _base_iter():
     unchanged if no conversion has been registered.
     """
 
-    def __init__(self, columns: list[str] | tuple[str, ...], values, _table, code: str = 'decode') -> None:
+    def __init__(self, columns: Iterable[str], values, _table, code: str = "decode") -> None:
         """Initialise.
 
         Args
@@ -28,7 +28,7 @@ class _base_iter():
         """
         self.values = values
         self.conversions: list[Callable[[Any], Any] | None] = [_table._conversions[column][code] for column in columns]
-        self.columns: list[str] | tuple[str, ...] = columns
+        self.columns: Iterable[str] = columns
 
     def __iter__(self) -> Self:
         """Self iteration."""
@@ -47,9 +47,6 @@ class _base_iter():
 class gen_iter(_base_iter):
     """Iterator returning a generator for decoded values from values."""
 
-    def __init__(self, columns: list[str] | tuple[str, ...], values, _table, code: str = 'decode') -> None:
-        super().__init__(columns, values, _table, code)
-
     # FIXME: Forced to type hint 'Any' as pylance unable to work out which iterator is returned.
     def __next__(self) -> Any:
         """Return next value."""
@@ -58,9 +55,6 @@ class gen_iter(_base_iter):
 
 class tuple_iter(_base_iter):
     """Iterator returning a tuple for decoded values from values."""
-
-    def __init__(self, columns: list[str] | tuple[str, ...], values, _table, code: str = 'decode') -> None:
-        super().__init__(columns, values, _table, code)
 
     # FIXME: Forced to type hint 'Any' as pylance unable to work out which iterator is returned.
     def __next__(self) -> Any:
@@ -71,9 +65,9 @@ class tuple_iter(_base_iter):
 class namedtuple_iter(_base_iter):
     """Iterator returning a namedtuple for decoded values from values."""
 
-    def __init__(self, columns: list[str] | tuple[str, ...], values, _table, code: str = 'decode') -> None:
+    def __init__(self, columns: Iterable[str], values, _table, code: str = "decode") -> None:
         super().__init__(columns, values, _table, code)
-        self.namedtuple = namedtuple('row', columns)
+        self.namedtuple = namedtuple("row", columns)
 
     # FIXME: Forced to type hint 'Any' as pylance unable to work out which iterator is returned.
     def __next__(self) -> Any:
@@ -83,9 +77,6 @@ class namedtuple_iter(_base_iter):
 
 class dict_iter(_base_iter):
     """Iterator returning a dict for decoded values from values."""
-
-    def __init__(self, columns: list[str] | tuple[str, ...], values, _table, code: str = 'decode') -> None:
-        super().__init__(columns, values, _table, code)
 
     # FIXME: Forced to type hint 'Any' as pylance unable to work out which iterator is returned.
     def __next__(self) -> Any:

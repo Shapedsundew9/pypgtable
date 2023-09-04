@@ -1,10 +1,12 @@
 """pypgtable typing."""
-from typing import Any, Callable, LiteralString, NotRequired, TypedDict
+from typing import Any, Callable, LiteralString, NotRequired, TypedDict, Literal
 
 from .row_iterators import dict_iter, gen_iter, namedtuple_iter, tuple_iter
 
 
 class DatabaseConfig(TypedDict):
+    """Database configuration."""
+
     dbname: NotRequired[str]
     host: NotRequired[str]
     user: NotRequired[str]
@@ -15,6 +17,8 @@ class DatabaseConfig(TypedDict):
 
 
 class DatabaseConfigNorm(TypedDict):
+    """Normalized database configuration."""
+
     dbname: str
     host: str
     user: str
@@ -25,6 +29,8 @@ class DatabaseConfigNorm(TypedDict):
 
 
 class SchemaColumn(TypedDict):
+    """Table schema column definition."""
+
     type: str
     volatile: NotRequired[bool]
     default: NotRequired[str]
@@ -36,6 +42,8 @@ class SchemaColumn(TypedDict):
 
 
 class SchemaColumnNorm(TypedDict):
+    """Normalized table schema column definition."""
+
     type: str
     volatile: bool
     default: NotRequired[str]
@@ -54,6 +62,8 @@ TableSchema = dict[str, SchemaColumn]
 
 
 class TableConfig(TypedDict):
+    """Table configuration."""
+
     database: NotRequired[DatabaseConfig]
     table: str
     schema: TableSchema
@@ -73,6 +83,8 @@ TableSchemaNorm = dict[str, SchemaColumnNorm]
 
 
 class TableConfigNorm(TypedDict):
+    """Normalized table configuration."""
+
     database: DatabaseConfigNorm
     table: str
     schema: TableSchemaNorm
@@ -89,3 +101,4 @@ class TableConfigNorm(TypedDict):
 
 
 RowIter = tuple_iter | namedtuple_iter | gen_iter | dict_iter
+RawCType = Literal["tuple", "namedtuple", "dict"]
