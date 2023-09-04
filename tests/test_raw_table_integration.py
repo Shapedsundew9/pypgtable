@@ -3,78 +3,55 @@
 
 from copy import deepcopy
 from inspect import stack
+from itertools import count
 from json import load
 from logging import NullHandler, getLogger
 from os.path import dirname, join
+from typing import Any
 
 from psycopg2 import ProgrammingError, errors
 from pytest import approx
 
 from pypgtable import default_config, raw_table
 from pypgtable.database import db_transaction
-from pypgtable.utils.reference import sequential_reference
 
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
 
 
 _CONFIG = {
-    'database': {
-        'dbname': 'test_db'
+    "database": {"dbname": "test_db"},
+    "table": "test_table",
+    "schema": {
+        "name": {"type": "VARCHAR", "nullable": True},
+        "id": {"type": "INTEGER", "primary_key": True},
+        "left": {"type": "INTEGER", "nullable": True},
+        "right": {"type": "INTEGER", "nullable": True},
+        "uid": {
+            "type": "INTEGER",
+            "index": "btree",
+            "unique": True,
+        },
+        "updated": {"type": "TIMESTAMP", "default": "NOW()"},
+        "metadata": {"type": "INTEGER[]", "index": "btree", "nullable": True},
     },
-    'table': 'test_table',
-    'schema': {
-        'name': {
-            'type': 'VARCHAR',
-            'nullable': True
-        },
-        'id': {
-            'type': 'INTEGER',
-            'primary_key': True
-        },
-        'left': {
-            'type': 'INTEGER',
-            'nullable': True
-        },
-        'right': {
-            'type': 'INTEGER',
-            'nullable': True
-        },
-        'uid': {
-            'type': 'INTEGER',
-            'index': 'btree',
-            'unique': True,
-        },
-        'updated': {
-            'type': 'TIMESTAMP',
-            'default': 'NOW()'
-        },
-        'metadata': {
-            'type': 'INTEGER[]',
-            'index': 'btree',
-            'nullable': True
-        }
-    },
-    'ptr_map': {
-        'left': 'id',
-        'right': 'id'
-    },
-    'data_file_folder': join(dirname(__file__), 'data'),
-    'data_files': ['data_values.json', 'data_empty.json'],
-    'delete_db': False,
-    'delete_table': True,
-    'create_db': True,
-    'create_table': True,
-    'wait_for_db': False,
-    'wait_for_table': False
+    "ptr_map": {"left": "id", "right": "id"},
+    "data_file_folder": join(dirname(__file__), "data"),
+    "data_files": ["data_values.json", "data_empty.json"],
+    "delete_db": False,
+    "delete_table": True,
+    "create_db": True,
+    "create_table": True,
+    "wait_for_db": False,
+    "wait_for_table": False,
 }
 
 
-with open(join(dirname(__file__), 'data/data_values.json'), 'r') as fileptr:
+with open(join(dirname(__file__), "data/data_values.json"), "r", encoding="utf-8") as fileptr:
     _DEFAULT_TABLE_LENGTH = len(load(fileptr))
 
 
-def test_create_table():
+def test_create_table() -> None:
     """Validate a the SQL sequence when a table exists."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
@@ -82,7 +59,7 @@ def test_create_table():
     assert rt is not None
 
 
-def test_wait_for_table_creation(monkeypatch):
+def test_wait_for_table_creation(monkeypatch) -> None:
     """Wait for the table to be created.
 
     Create the table then set wait_for_table to True.
@@ -92,21 +69,21 @@ def test_wait_for_table_creation(monkeypatch):
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    config['wait_for_table'] = True
-    config['create_table'] = False
-    config['delete_table'] = False
+    config["wait_for_table"] = True
+    config["create_table"] = False
+    config["delete_table"] = False
 
-    mock_ref = sequential_reference()
+    mock_ref = count()
 
-    def mock_table_exists(*args, **kwargs):
+    def mock_table_exists(*args, **kwargs) -> bool:  # pylint: disable=unused-argument
         return (False, False, True)[next(mock_ref)]
 
-    monkeypatch.setattr(raw_table, '_table_exists', mock_table_exists)
+    monkeypatch.setattr(raw_table, "_table_exists", mock_table_exists)
     rt = raw_table(config)
     assert rt is not None
 
 
-def test_wait_for_db_creation(monkeypatch):
+def test_wait_for_db_creation(monkeypatch) -> None:
     """Wait for the database to be created.
 
     Make sure the DB exists by creating a table.
@@ -114,34 +91,34 @@ def test_wait_for_db_creation(monkeypatch):
     check and false in the first self._table_exists() check to force a single backoff.
     """
     _logger.debug(stack()[0][3])
-    config = deepcopy(_CONFIG)
-    rt = raw_table(config)
-    config['wait_for_db'] = True
-    config['create_db'] = False
-    config['delete_db'] = False
+    config: dict[str, Any] = deepcopy(_CONFIG)
+    rawt = raw_table(config)
+    config["wait_for_db"] = True
+    config["create_db"] = False
+    config["delete_db"] = False
 
-    mock_ref = sequential_reference()
+    mock_ref = count()
 
-    def mock_db_exists(*args, **kwargs):
+    def mock_db_exists(*args, **kwargs) -> bool:  # pylint: disable=unused-argument
         return (True, True, False, True, True)[next(mock_ref)]
 
-    monkeypatch.setattr(raw_table, '_db_exists', mock_db_exists)
-    rt = raw_table(config)
-    assert rt is not None
+    monkeypatch.setattr(raw_table, "_db_exists", mock_db_exists)
+    rawt = raw_table(config)
+    assert rawt is not None
 
 
-def test_create_table_error_1(monkeypatch):
+def test_create_table_error_1(monkeypatch) -> None:
     """Raise a ProgrammingError when trying to create the table."""
     _logger.debug(stack()[0][3])
     rt = raw_table(_CONFIG)
     config = deepcopy(rt.config)
 
-    def mock_db_transaction(self, sql_str_iter, read=True, repeatable=False):
-        if 'CREATE TABLE ' in self._sql_to_string(sql_str_iter[0]):
+    def mock_db_transaction(self, sql_str, read=True, ctype="tuple"):
+        if "CREATE TABLE " in self._sql_to_string(sql_str):  # pylint: disable=protected-access
             raise ProgrammingError
-        return db_transaction(config['database']['dbname'], config['database'], sql_str_iter, read, repeatable)
+        return db_transaction(config["database"]["dbname"], config["database"], sql_str, read, ctype=ctype)
 
-    monkeypatch.setattr(raw_table, '_db_transaction', mock_db_transaction)
+    monkeypatch.setattr(raw_table, "_db_transaction", mock_db_transaction)
     try:
         raw_table(config)
     except ProgrammingError:
@@ -156,17 +133,17 @@ def test_create_table_error_2(monkeypatch):
     rt = raw_table(_CONFIG)
     config = deepcopy(rt.config)
 
-    def mock_db_transaction(self, sql_str_iter, read=True, repeatable=False):
-        if 'CREATE TABLE ' in self._sql_to_string(sql_str_iter[0]):
-            monkeypatch.setattr(ProgrammingError, 'pgcode', errors.DuplicateTable)
+    def mock_db_transaction(self, sql_str, read=True, ctype="tuple"):
+        if "CREATE TABLE " in self._sql_to_string(sql_str):  # pylint: disable=protected-access
+            monkeypatch.setattr(ProgrammingError, "pgcode", errors.DuplicateTable)  # pylint: disable = no-member
             raise ProgrammingError
-        return db_transaction(config['database']['dbname'], config['database'], sql_str_iter, read, repeatable)
+        return db_transaction(config["database"]["dbname"], config["database"], sql_str, read, ctype=ctype)
 
-    def mock_table_definition(self):
+    def mock_table_definition(self):  # pylint: disable=unused-argument, # type: ignore
         return []
 
-    monkeypatch.setattr(raw_table, '_db_transaction', mock_db_transaction)
-    monkeypatch.setattr(raw_table, '_table_definition', mock_table_definition)
+    monkeypatch.setattr(raw_table, "_db_transaction", mock_db_transaction)
+    monkeypatch.setattr(raw_table, "_table_definition", mock_table_definition)
     assert raw_table(config) is not None
 
 
@@ -175,12 +152,12 @@ def test_existing_table_unmatched_config():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     raw_table(config)
-    del config['schema']['updated']
-    config['delete_table'] = False
+    del config["schema"]["updated"]
+    config["delete_table"] = False
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05001' in str(e)
+        assert "E05001" in str(e)
     else:
         assert False
 
@@ -190,12 +167,12 @@ def test_existing_table_primary_key_mismatch():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     raw_table(config)
-    config['schema']['id']['primary_key'] = False
-    config['delete_table'] = False
+    config["schema"]["id"]["primary_key"] = False
+    config["delete_table"] = False
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05002' in str(e)
+        assert "E05002" in str(e)
     else:
         assert False
 
@@ -205,12 +182,12 @@ def test_existing_table_unique_mismatch():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     raw_table(config)
-    config['schema']['left']['unique'] = True
-    config['delete_table'] = False
+    config["schema"]["left"]["unique"] = True
+    config["delete_table"] = False
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05003' in str(e)
+        assert "E05003" in str(e)
     else:
         assert False
 
@@ -220,12 +197,12 @@ def test_existing_table_nullable_mismatch():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     raw_table(config)
-    config['schema']['left']['nullable'] = False
-    config['delete_table'] = False
+    config["schema"]["left"]["nullable"] = False
+    config["delete_table"] = False
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05004' in str(e)
+        assert "E05004" in str(e)
     else:
         assert False
 
@@ -243,8 +220,8 @@ def test_select_1():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    data = rt.select('WHERE {id} = {seven}', {'seven': 7}, columns=('uid', 'left', 'right'))
-    assert data == [(107, 13, None)]
+    data = rt.select("WHERE {id} = {seven}", {"seven": 7}, columns=("uid", "left", "right"))
+    assert list(data) == [(107, 13, None)]
 
 
 def test_select_2():
@@ -252,8 +229,8 @@ def test_select_2():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    data = rt.select('WHERE {id} = {seven}', {'seven': 7}, columns='{uid}, {left}, {right}')
-    assert data == [(107, 13, None)]
+    data = rt.select("WHERE {id} = {seven}", {"seven": 7}, columns="{uid}, {left}, {right}")
+    assert list(data) == [(107, 13, None)]
 
 
 def test_literals_error():
@@ -262,7 +239,7 @@ def test_literals_error():
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
     try:
-        rt.select('WHERE {id} = {left}', {'left': 7}, columns=('uid', 'left', 'right'))
+        rt.select("WHERE {id} = {left}", {"left": 7}, columns=("uid", "left", "right"))
     except ValueError:
         pass
     else:
@@ -274,9 +251,15 @@ def test_recursive_select_1():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    data = rt.recursive_select('WHERE {id} = 2', columns=('id', 'uid', 'left', 'right'))
-    assert data == [(2, 102, 5, 6), (5, 105, 10, 11), (6, 106, None, 12),
-                    (10, 110, None, None), (11, 111, None, None), (12, 112, None, None)]
+    data = rt.recursive_select("WHERE {id} = 2", columns=("id", "uid", "left", "right"))
+    assert list(data) == [
+        (2, 102, 5, 6),
+        (5, 105, 10, 11),
+        (6, 106, None, 12),
+        (10, 110, None, None),
+        (11, 111, None, None),
+        (12, 112, None, None),
+    ]
 
 
 def test_recursive_select_2():
@@ -284,8 +267,8 @@ def test_recursive_select_2():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    data = rt.recursive_select('WHERE {id} = 2')
-    assert len(data) == 6
+    data = rt.recursive_select("WHERE {id} = 2")
+    assert len(tuple(data)) == 6
 
 
 def test_recursive_select_no_ptr():
@@ -293,9 +276,15 @@ def test_recursive_select_no_ptr():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    data = rt.recursive_select('WHERE {id} = 2', columns=('id', 'uid', 'left'))
-    assert data == [(2, 102, 5, 6), (5, 105, 10, 11), (6, 106, None, 12),
-                    (10, 110, None, None), (11, 111, None, None), (12, 112, None, None)]
+    data = rt.recursive_select("WHERE {id} = 2", columns=("id", "uid", "left"))
+    assert list(data) == [
+        (2, 102, 5, 6),
+        (5, 105, 10, 11),
+        (6, 106, None, 12),
+        (10, 110, None, None),
+        (11, 111, None, None),
+        (12, 112, None, None),
+    ]
 
 
 def test_insert():
@@ -306,7 +295,7 @@ def test_insert():
     columns = ("id", "left", "right", "uid", "metadata", "name")
     values = ((91, 3, 4, 901, [1, 2], "Harry"), (92, 5, 6, 902, [], "William"))
     rt.insert(columns, values)
-    data = tuple(rt.select('WHERE {id} > 90', columns=columns))
+    data = tuple(rt.select("WHERE {id} > 90", columns=columns))
     assert data == values
 
 
@@ -314,12 +303,18 @@ def test_upsert():
     """Can only upsert if a primary key is defined."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    config['schema']['id']['primary_key'] = False
+    config["schema"]["id"]["primary_key"] = False
     rt = raw_table(config)
     columns = ("id", "left", "right", "uid", "metadata", "name")
     values = ((91, 3, 4, 901, [1, 2], "Harry"), (0, 1, 2, 201, [], "Diana"))
     try:
-        rt.upsert(columns, values, '{name}={EXCLUDED.name} || {temp}', {'temp': '_temp'}, ('uid', 'id', 'name'))
+        rt.upsert(
+            columns,
+            values,
+            "{name}={EXCLUDED.name} || {temp}",
+            {"temp": "_temp"},
+            ("uid", "id", "name"),
+        )
     except ValueError:
         pass
     else:
@@ -333,10 +328,16 @@ def test_upsert_error():
     rt = raw_table(config)
     columns = ("id", "left", "right", "uid", "metadata", "name")
     values = ((91, 3, 4, 901, [1, 2], "Harry"), (0, 1, 2, 201, [], "Diana"))
-    returning = rt.upsert(columns, values, '{name}={EXCLUDED.name} || {temp}', {'temp': '_temp'}, ('uid', 'id', 'name'))
-    row = rt.select('WHERE {id} = 0', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
-    assert returning == [(901, 91, 'Harry'), (100, 0, 'Diana_temp')]
-    assert row == [(0, 1, 2, 100, None, "Diana_temp")]
+    returning = rt.upsert(
+        columns,
+        values,
+        "{name}={EXCLUDED.name} || {temp}",
+        {"temp": "_temp"},
+        ("uid", "id", "name"),
+    )
+    row = rt.select("WHERE {id} = 0", columns=("id", "left", "right", "uid", "metadata", "name"))
+    assert list(returning) == [(901, 91, "Harry"), (100, 0, "Diana_temp")]
+    assert list(row) == [(0, 1, 2, 100, None, "Diana_temp")]
 
 
 def test_update():
@@ -344,10 +345,15 @@ def test_update():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    returning = rt.update('{name}={name} || {new}', '{id}={qid}', {'qid': 0, 'new': '_new'}, ('id', 'name'))
-    row = rt.select('WHERE {id} = 0', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
-    assert returning == [(0, 'root_new')]
-    assert row == [(0, 1, 2, 100, None, "root_new")]
+    returning = rt.update(
+        "{name}={name} || {new}",
+        "{id}={qid}",
+        {"qid": 0, "new": "_new"},
+        ("id", "name"),
+    )
+    row = rt.select("WHERE {id} = 0", columns=("id", "left", "right", "uid", "metadata", "name"))
+    assert list(returning) == [(0, "root_new")]
+    assert list(row) == [(0, 1, 2, 100, None, "root_new")]
 
 
 def test_delete():
@@ -355,10 +361,10 @@ def test_delete():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    returning = rt.delete('{id}={target}', {'target': 7}, ('uid', 'id'))
-    row = rt.select('WHERE {id} = 7', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
-    assert returning == [(107, 7)]
-    assert row == []
+    returning = rt.delete("{id}={target}", {"target": 7}, ("uid", "id"))
+    row = rt.select("WHERE {id} = 7", columns=("id", "left", "right", "uid", "metadata", "name"))
+    assert list(returning) == [(107, 7)]
+    assert list(row) == []
 
 
 def test_upsert_returning_all():
@@ -368,10 +374,10 @@ def test_upsert_returning_all():
     rt = raw_table(config)
     columns = ("id", "left", "right", "uid", "metadata", "name")
     values = ((91, 3, 4, 901, [1, 2], "Harry"), (0, 1, 2, 201, [], "Diana"))
-    returning = rt.upsert(columns, values, '{name}={EXCLUDED.name} || {temp}', {'temp': '_temp'}, '*')
-    row = rt.select('WHERE {id} = 0', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
-    assert len(returning[0]) == 7 and len(returning[1]) == 7
-    assert row == [(0, 1, 2, 100, None, "Diana_temp")]
+    returning = rt.upsert(columns, values, "{name}={EXCLUDED.name} || {temp}", {"temp": "_temp"}, "*")
+    row = rt.select("WHERE {id} = 0", columns=("id", "left", "right", "uid", "metadata", "name"))
+    assert len(next(returning)) == 7 and len(next(returning)) == 7
+    assert list(row) == [(0, 1, 2, 100, None, "Diana_temp")]
 
 
 def test_update_returning_all():
@@ -379,10 +385,10 @@ def test_update_returning_all():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    returning = rt.update('{name}={name} || {new}', '{id}={qid}', {'qid': 0, 'new': '_new'}, '*')
-    row = rt.select('WHERE {id} = 0', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
-    assert len(returning[0]) == 7
-    assert row == [(0, 1, 2, 100, None, "root_new")]
+    returning = rt.update("{name}={name} || {new}", "{id}={qid}", {"qid": 0, "new": "_new"}, "*")
+    row = rt.select("WHERE {id} = 0", columns=("id", "left", "right", "uid", "metadata", "name"))
+    assert len(next(returning)) == 7
+    assert list(row) == [(0, 1, 2, 100, None, "root_new")]
 
 
 def test_delete_returning_all():
@@ -390,10 +396,10 @@ def test_delete_returning_all():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    returning = rt.delete('{id}={target}', {'target': 7}, '*')
-    row = rt.select('WHERE {id} = 7', columns=('id', 'left', 'right', 'uid', 'metadata', 'name'))
-    assert len(returning[0]) == 7
-    assert row == []
+    returning = rt.delete("{id}={target}", {"target": 7}, "*")
+    row = rt.select("WHERE {id} = 7", columns=("id", "left", "right", "uid", "metadata", "name"))
+    assert len(next(returning)) == 7
+    assert list(row) == []
 
 
 def test_duplicate_table():
@@ -401,10 +407,10 @@ def test_duplicate_table():
     _logger.debug(stack()[0][3])
     config1 = deepcopy(_CONFIG)
     config2 = deepcopy(_CONFIG)
-    config2['delete_table'] = False
+    config2["delete_table"] = False
     rt1 = raw_table(config1)
     rt2 = raw_table(config2)
-    for t1, t2 in zip(rt1.select(columns=('updated',))[0], rt2.select(columns=('updated',))[0]):
+    for t1, t2 in zip(next(rt1.select(columns=("updated",))), next(rt2.select(columns=("updated",)))):
         assert t1 == t2
     rt1.delete_table()
     rt2.delete_table()
@@ -419,18 +425,18 @@ def test_discover_table():
     """
     _logger.debug(stack()[0][3])
     config1 = deepcopy(_CONFIG)
-    config1['data_files'] = []
+    config1["data_files"] = []
     rt1 = raw_table(config1)
     columns = ("id", "left", "right", "uid", "metadata", "name")
     values = [(91, 3, 4, 901, [1, 2], "Harry"), (92, 5, 6, 902, [], "William")]
     rt1.insert(columns, values)
-    rt2 = raw_table({'database': _CONFIG['database'], 'table': _CONFIG['table']})
+    rt2 = raw_table({"database": _CONFIG["database"], "table": _CONFIG["table"]})
     data = rt2.select(columns=columns)
-    assert data == values
+    assert list(data) == values
     values.append((0, 1, 2, 201, [], "Diana"))
     rt2.insert(columns, [values[-1]])
     data = rt1.select(columns=columns)
-    assert data == values
+    assert list(data) == values
 
 
 def test_config_coercion():
@@ -438,18 +444,18 @@ def test_config_coercion():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     rt = raw_table(config)
-    assert rt.config['schema']['id']['unique']
+    assert rt.config["schema"]["id"]["unique"]
 
 
 def test_invalid_config_1():
     """Invalid database configuration."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    config['database']['port'] = 100
+    config["database"]["port"] = 100
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05000' in str(e)
+        assert "E05000" in str(e)
         return
     assert False
 
@@ -458,11 +464,11 @@ def test_invalid_config_2():
     """General invalid schema column configuration."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    del config['schema']['name']['type']
+    del config["schema"]["name"]["type"]
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05000' in str(e)
+        assert "E05000" in str(e)
         return
     assert False
 
@@ -471,11 +477,11 @@ def test_invalid_config_3():
     """Invalid schema column configuration: NULL & PRIMARY KEY."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    config['schema']['id']['nullable'] = True
+    config["schema"]["id"]["nullable"] = True
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05000' in str(e)
+        assert "E05000" in str(e)
         return
     assert False
 
@@ -484,11 +490,11 @@ def test_invalid_config_4():
     """Invalid schema column configuration: Multiple primary keys."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    config['schema']['name']['primary_key'] = True
+    config["schema"]["name"]["primary_key"] = True
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05000' in str(e)
+        assert "E05000" in str(e)
         return
     assert False
 
@@ -497,11 +503,11 @@ def test_invalid_config_5():
     """Invalid schema column configuration: Ptr map circular reference."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    config['ptr_map']['id'] = 'left'
+    config["ptr_map"]["id"] = "left"
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05000' in str(e)
+        assert "E05000" in str(e)
         return
     assert False
 
@@ -510,11 +516,11 @@ def test_invalid_config_6():
     """Invalid schema column configuration: Ptr map value is not a column."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    config['ptr_map']['left'] = 'invalid'
+    config["ptr_map"]["left"] = "invalid"
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05000' in str(e)
+        assert "E05000" in str(e)
         return
     assert False
 
@@ -523,11 +529,11 @@ def test_invalid_config_7():
     """Invalid schema column configuration: Ptr map key is not a column."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    config['ptr_map']['invalid'] = 'id'
+    config["ptr_map"]["invalid"] = "id"
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05000' in str(e)
+        assert "E05000" in str(e)
         return
     assert False
 
@@ -536,12 +542,12 @@ def test_invalid_config_8():
     """Invalid schema column configuration: DB delete requires DB create."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    config['delete_db'] = True
-    config['create_db'] = False
+    config["delete_db"] = True
+    config["create_db"] = False
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05000' in str(e)
+        assert "E05000" in str(e)
         return
     assert False
 
@@ -550,12 +556,12 @@ def test_invalid_config_9():
     """Invalid schema column configuration: Table delete requires table create."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    config['delete_table'] = True
-    config['create_table'] = False
+    config["delete_table"] = True
+    config["create_table"] = False
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05000' in str(e)
+        assert "E05000" in str(e)
         return
     assert False
 
@@ -564,12 +570,12 @@ def test_invalid_config_10():
     """Invalid schema column configuration: DB delete requires table create or wait_for_table."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    config['delete_db'] = True
-    config['create_table'] = False
+    config["delete_db"] = True
+    config["create_table"] = False
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05000' in str(e)
+        assert "E05000" in str(e)
         return
     assert False
 
@@ -578,12 +584,12 @@ def test_invalid_config_11():
     """Invalid schema column configuration: Create DB requires wait_for_db == False."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    config['create_db'] = True
-    config['wait_for_db'] = True
+    config["create_db"] = True
+    config["wait_for_db"] = True
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05000' in str(e)
+        assert "E05000" in str(e)
         return
     assert False
 
@@ -592,12 +598,12 @@ def test_invalid_config_12():
     """Invalid schema column configuration: Create table requires wait_for_table == False."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    config['create_table'] = True
-    config['wait_for_table'] = True
+    config["create_table"] = True
+    config["wait_for_table"] = True
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05000' in str(e)
+        assert "E05000" in str(e)
         return
     assert False
 
@@ -606,12 +612,12 @@ def test_invalid_config_13():
     """Invalid schema column configuration: Wait for DB requires create_db & delete_db to be False."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    config['delete_db'] = True
-    config['wait_for_db'] = True
+    config["delete_db"] = True
+    config["wait_for_db"] = True
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05000' in str(e)
+        assert "E05000" in str(e)
         return
     assert False
 
@@ -620,13 +626,13 @@ def test_invalid_config_14():
     """Invalid schema column configuration: Wait for DB requires create_table or wait_for_table to be True."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    config['create_table'] = False
-    config['wait_for_table'] = False
-    config['wait_for_db'] = True
+    config["create_table"] = False
+    config["wait_for_table"] = False
+    config["wait_for_db"] = True
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05000' in str(e)
+        assert "E05000" in str(e)
         return
     assert False
 
@@ -635,12 +641,12 @@ def test_invalid_config_15():
     """Invalid schema column configuration: Wait for table requires create_table and delete_table to be False."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    config['create_table'] = True
-    config['wait_for_table'] = True
+    config["create_table"] = True
+    config["wait_for_table"] = True
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05000' in str(e)
+        assert "E05000" in str(e)
         return
     assert False
 
@@ -649,11 +655,11 @@ def test_invalid_config_16():
     """Invalid schema column configuration: Wait for table requires create_table and delete_table to be False."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    config['data_files'] = ['invalid']
+    config["data_files"] = ["invalid"]
     try:
         raw_table(config)
     except ValueError as e:
-        assert 'E05000' in str(e)
+        assert "E05000" in str(e)
         return
     assert False
 
@@ -662,8 +668,8 @@ def test_delete_create_db():
     """Delete the DB & re-create it."""
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
-    config['delete_db'] = True
-    config['create_db'] = True
+    config["delete_db"] = True
+    config["create_db"] = True
     raw_table(config)
 
 
@@ -672,7 +678,7 @@ def test_arbitrary_sql_return():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = raw_table(config)
-    result = t.arbitrary_sql('SELECT 2.0::REAL * 3.0::REAL')[0][0]
+    result = next(t.arbitrary_sql("SELECT 2.0::REAL * 3.0::REAL"))[0]
     assert result == approx(6.0)
 
 
@@ -681,7 +687,7 @@ def test_arbitrary_sql_literals():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = raw_table(config)
-    result = t.arbitrary_sql('SELECT {two}::REAL * {three}::REAL', {'two': 2.0, 'three': 3.0})[0][0]
+    result = next(t.arbitrary_sql("SELECT {two}::REAL * {three}::REAL", {"two": 2.0, "three": 3.0}))[0]
     assert result == approx(6.0)
 
 
@@ -690,28 +696,12 @@ def test_arbitrary_sql_no_return():
     _logger.debug(stack()[0][3])
     config = deepcopy(_CONFIG)
     t = raw_table(config)
-    result = t.arbitrary_sql('INSERT INTO "test_table" ("id","metadata","right","uid")' +
-                             ' VALUES (6,ARRAY[1],12,106) ON CONFLICT DO NOTHING')
-    assert result is None
-
-
-def test_arbitrary_sql_error_in_fetchall(monkeypatch):
-    """Execute some arbitrary SQL that errors in fetchall()."""
-    _logger.debug(stack()[0][3])
-    config = deepcopy(_CONFIG)
-    t = raw_table(config)
-
-    class mock_cursor():
-        def __init__(self) -> None: self.value = None
-        def fetchall(self): raise ProgrammingError
-
-    def mock_db_transaction(*args, **kwargs):
-        return [mock_cursor()]
-
-    monkeypatch.setattr(raw_table, '_db_transaction', mock_db_transaction)
+    result = t.arbitrary_sql(
+        'INSERT INTO "test_table" ("id","metadata","right","uid")' + " VALUES (6,ARRAY[1],12,106) ON CONFLICT DO NOTHING",
+        read=False,
+    )
     try:
-        t.arbitrary_sql('INSERT INTO "test_table" ("id","metadata","right","uid")' +
-                        ' VALUES (6,ARRAY[1],12,106) ON CONFLICT DO NOTHING')
+        next(result)
     except ProgrammingError:
         pass
     else:

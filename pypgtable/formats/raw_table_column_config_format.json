@@ -27,6 +27,13 @@
             "description": "Entries in the column are unique and automatically indexed if True. Cannot also be primary keys."
         }
     },
+    "volatile": {
+        "type": "boolean",
+        "default": false,
+        "meta": {
+            "description": "Application hint that the column may be updated after initialisation when True."
+        }
+    },
     "index": {
         "type": "string",
         "allowed": [
