@@ -138,9 +138,9 @@ def _get_connection(dbname, host):
     return threads.setdefault(get_ident(), None)
 
 
-def _clean_connections():
+def _clean_connections() -> None:
     """If threads no longer exist close any connections they may have had."""
-    idents = [thread.ident for thread in filter(lambda x: x is not None, thread_enumerate())]
+    idents: list[int | None] = [thread.ident for thread in filter(lambda x: x is not None, thread_enumerate())]
     for host, dbs in _connections.items():
         for dbname, threads in dbs.items():
             for ident, connection in tuple(threads.items()):
