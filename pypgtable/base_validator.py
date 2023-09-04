@@ -19,8 +19,8 @@ class base_validator(Validator):
     """Additional format checks."""
 
     types_mapping: Any = Validator.types_mapping.copy()  # type: ignore
-    types_mapping['uuid'] = TypeDefinition('uuid', (UUID,), ())
-    types_mapping['callable'] = TypeDefinition('callable', (Callable,), ())
+    types_mapping["uuid"] = TypeDefinition("uuid", (UUID,), ())
+    types_mapping["callable"] = TypeDefinition("callable", (Callable,), ())
 
     def __init__(self, *args, **kwargs) -> None:
         # FIXME: To satisfy pylance.
@@ -35,7 +35,7 @@ class base_validator(Validator):
 
     def error_str(self) -> str:
         """Prettier format to a list of errors."""
-        return '\n'.join((field + ': ' + pformat(error) for field, error in self.errors.items()))  # type: ignore
+        return "\n".join((field + ": " + pformat(error) for field, error in self.errors.items()))  # type: ignore
 
     def _isdir(self, field: str, value: Any) -> bool:
         """Validate value is a valid, existing directory."""
@@ -87,10 +87,6 @@ class base_validator(Validator):
     def str_errors(self, error: Any) -> str:
         """Create an error string."""
         if error.code == UNKNOWN_FIELD.code:
-            error.rule = 'unknown field'
-        str_tuple: tuple[str, str, str] = (
-            'Value: ' + str(error.value),
-            'Rule: ' + str(error.rule),
-            'Constraint: ' + str(error.constraint)
-        )
-        return ', '.join(str_tuple)
+            error.rule = "unknown field"
+        str_tuple: tuple[str, str, str] = ("Value: " + str(error.value), "Rule: " + str(error.rule), "Constraint: " + str(error.constraint))
+        return ", ".join(str_tuple)
