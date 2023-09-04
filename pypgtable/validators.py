@@ -5,7 +5,7 @@ from logging import Logger, NullHandler, getLogger
 from os.path import dirname, join
 from typing import Any
 
-from egp_utils.base_validator import base_validator
+from .base_validator import base_validator
 
 _logger: Logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
