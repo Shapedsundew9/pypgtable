@@ -55,7 +55,14 @@ register_token_code(
     "Table {table} does not exist in database {dbname} and will not be created.",
 )
 register_token_code("E05006", "Recursive select on table {table} requires ptr_map to be configured.")
-
+register_token_code(
+    "E05007",
+    "Database {dbname} does not exist and will not be created.",
+)
+register_token_code(
+    "I05008",
+    "Database {dbname} does not yet exist. Waiting {backoff:.2}s to retry.",
+)
 
 _INITIAL_DELAY = 0.125
 _BACKOFF_STEPS = 13
@@ -152,8 +159,12 @@ class raw_table:
         self.ptr_map_def(self.config["ptr_map"])
         if self.config["delete_db"]:
             self.delete_db()
-        if not db_exists(self.config["database"]["dbname"], self.config["database"]) and self.config["create_db"]:
-            self._create_db()
+        if not self._db_exists():
+            if self.config["create_db"]:
+                self._create_db()
+            elif self.config["wait_for_db"]:
+
+                raise ValueError(text_token({"E05007": {"dbname": self.config["database"]["dbname"]}}))
         if self.config["delete_table"]:
             self.delete_table()
         create_table: bool = not self._table_exists() and self.config["create_table"]
@@ -210,7 +221,24 @@ class raw_table:
         self._pm: dict[str, str] = deepcopy(ptr_map)
         self._pm_columns: set[str] = set(ptr_map.keys()) | set(ptr_map.values())
 
-    def _db_exists(self) -> bool:
+    def _db_exists(self, wait: bool = False) -> bool:
+        if wait:
+            backoff_gen: Generator[Any, None, None] = backoff_generator(_INITIAL_DELAY, _BACKOFF_STEPS, _BACKOFF_FUZZ)
+            while not db_exists(self.config["database"]["dbname"], self.config["database"]):
+                backoff = next(backoff_gen)
+                dbname = self.config["database"]["dbname"]
+                _logger.info(
+                    text_token(
+                        {
+                            "I05008": {
+                                "dbname": dbname,
+                                "backoff": backoff,
+                            }
+                        }
+                    )
+                )
+                sleep(backoff)
+            return True
         return db_exists(self.config["database"]["dbname"], self.config["database"])
 
     def _create_db(self) -> None:
@@ -346,18 +374,17 @@ class raw_table:
         while not self._table_exists() and self.config["wait_for_table"]:
             backoff = next(backoff_gen)
             dbname = self.config["database"]["dbname"]
-            if _LOG_DEBUG:
-                _logger.debug(
-                    text_token(
-                        {
-                            "I05003": {
-                                "table": self.config["table"],
-                                "dbname": dbname,
-                                "backoff": backoff,
-                            }
+            _logger.info(
+                text_token(
+                    {
+                        "I05003": {
+                            "table": self.config["table"],
+                            "dbname": dbname,
+                            "backoff": backoff,
                         }
-                    )
+                    }
                 )
+            )
             sleep(backoff)
         results = tuple(self._db_transaction(_TABLE_DEFINITION_SQL.format(sql.Literal(self.config["table"]))))
         columns = set((column[0] for column in results))
