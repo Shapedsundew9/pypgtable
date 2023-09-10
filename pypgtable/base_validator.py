@@ -88,5 +88,9 @@ class base_validator(Validator):
         """Create an error string."""
         if error.code == UNKNOWN_FIELD.code:
             error.rule = "unknown field"
-        str_tuple: tuple[str, str, str] = ("Value: " + str(error.value), "Rule: " + str(error.rule), "Constraint: " + str(error.constraint))
+        str_tuple: tuple[str, str, str] = (
+            "Value: " + str(error.value),
+            "Rule: " + str(error.rule),
+            "Constraint: " + str(error.constraint),
+        )
         return ", ".join(str_tuple)

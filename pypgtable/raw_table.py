@@ -163,7 +163,6 @@ class raw_table:
             if self.config["create_db"]:
                 self._create_db()
             elif self.config["wait_for_db"]:
-
                 raise ValueError(text_token({"E05007": {"dbname": self.config["database"]["dbname"]}}))
         if self.config["delete_table"]:
             self.delete_table()

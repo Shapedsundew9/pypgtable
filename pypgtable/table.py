@@ -364,7 +364,13 @@ class table:
             container,
         )
 
-    def delete(self, query_str, literals: dict[str, Any] | None = None, returning=tuple(), container="dict") -> RowIter:
+    def delete(
+        self,
+        query_str,
+        literals: dict[str, Any] | None = None,
+        returning=tuple(),
+        container="dict",
+    ) -> RowIter:
         """Delete rows from the table.
 
         If query_str is not specified all rows in the table are deleted.
