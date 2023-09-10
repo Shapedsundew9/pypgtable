@@ -42,7 +42,7 @@ _CONFIG = {
 }
 
 
-with open(join(dirname(__file__), "data/data_values.json"), "r") as fileptr:
+with open(join(dirname(__file__), "data/data_values.json"), "r", encoding="utf-8") as fileptr:
     _DEFAULT_TABLE_LENGTH = len(load(fileptr))
 
 
