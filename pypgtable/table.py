@@ -56,7 +56,7 @@ class table:
             return False
         return True
 
-    def __getitem__(self, pk_value: Any) -> Any:
+    def __getitem__(self, pk_value: Any) -> dict[str, Any]:
         """Query the table for the row with primary key value pk_value.
 
         Args
@@ -95,9 +95,33 @@ class table:
         new_values[self.raw._primary_key] = pk_value
         self.upsert((new_values,))
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Count the number of rows in the table."""
         return len(self.raw)
+
+    def get(self, pk_value: Any, default: Any = None) -> Any:
+        """Query the table for the row with primary key value pk_value.
+
+        Args
+        ----
+        pk_value (obj): A primary key value.
+
+        Returns
+        -------
+        (dict) with the row values or an empty dict if the primary key does not exist.
+        """
+        if self.raw._primary_key is None:
+            raise ValueError("SELECT row on primary key but no primary key defined!")
+        encoded_pk_value: Any = self.encode_value(self.raw._primary_key, pk_value)
+        try:
+            return next(
+                self.select(
+                    "WHERE {" + self.raw._primary_key + "} = {_pk_value}",
+                    {"_pk_value": encoded_pk_value},
+                )
+            )
+        except StopIteration as _:
+            return default
 
     def _populate_table(self):
         """Add data to table after creation.

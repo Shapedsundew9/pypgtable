@@ -33,6 +33,12 @@ register_token_code(
 )
 register_token_code("I05004", "Adding data to table {table} from {file}.")
 register_token_code("I05005", "Database {dbname} does not yet exist. Waiting {backoff:.2}s to retry.")
+register_token_code("I05006", "Dropping database {dbname} if it exists.")
+register_token_code(
+    "I05008",
+    "Database {dbname} does not yet exist. Waiting {backoff:.2}s to retry.",
+)
+
 register_token_code("E05000", "Configuration error: See lines below.\n{error}")
 register_token_code(
     "E05001",
@@ -58,10 +64,6 @@ register_token_code("E05006", "Recursive select on table {table} requires ptr_ma
 register_token_code(
     "E05007",
     "Database {dbname} does not exist and will not be created.",
-)
-register_token_code(
-    "I05008",
-    "Database {dbname} does not yet exist. Waiting {backoff:.2}s to retry.",
 )
 
 _INITIAL_DELAY = 0.125
@@ -246,6 +248,7 @@ class raw_table:
 
     def delete_db(self) -> None:
         """Delete the database."""
+        _logger.info(text_token({"I05006": {"dbname": self.config['database']['dbname']}}))
         db_delete(self.config["database"]["dbname"], self.config["database"])
 
     def _db_transaction(self, sql_str, read=True, ctype="tuple"):
