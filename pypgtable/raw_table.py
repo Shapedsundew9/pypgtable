@@ -6,7 +6,7 @@ from logging import DEBUG, Logger, NullHandler, getLogger
 from os.path import join
 from pprint import pformat
 from time import sleep
-from typing import Any, Iterable, Literal, Generator
+from typing import Any, Iterable, Literal, Generator, cast
 
 from text_token import register_token_code, text_token
 from psycopg2 import ProgrammingError, errors, sql
@@ -493,25 +493,25 @@ class raw_table:
         -------
         (tuple(str)) Column names.
         """
-        columns: list[str | sql.Composed] = []
+        columns: list[sql.Composed] = []
         self.columns: set[str] = set()
         definition_list = self._order_schema()
         _logger.info("Table will be created with columns in the order logged below.")
         for column, definition in definition_list:
-            sql_str = " " + definition["type"]
+            _sql_str: str = " " + cast(str, definition["type"])
             if not definition["nullable"]:
-                sql_str += " NOT NULL"
+                _sql_str += " NOT NULL"
             if definition["primary_key"]:
-                sql_str += " PRIMARY KEY"
+                _sql_str += " PRIMARY KEY"
             if definition["unique"] and not definition["primary_key"]:
-                sql_str += " UNIQUE"
+                _sql_str += " UNIQUE"
             if "default" in definition:
-                sql_str += " DEFAULT " + definition["default"]
+                _sql_str += " DEFAULT " + definition["default"]
             self.columns.add(column)
-            _logger.info(f"Column: {column}, SQL Definition: {sql_str}, Alignment: {definition['alignment']}")
-            columns.append(sql.Identifier(column) + sql.SQL(sql_str))
+            _logger.info(f"Column: {column}, SQL Definition: {_sql_str}, Alignment: {definition['alignment']}")
+            columns.append(sql.Identifier(column) + sql.SQL(_sql_str))
 
-        sql_str = _TABLE_CREATE_SQL.format(self._table, sql.SQL(", ").join(columns))
+        sql_str: sql.Composed = _TABLE_CREATE_SQL.format(self._table, sql.SQL(", ").join(columns))
         _logger.info(text_token({"I05000": {"sql": self._sql_to_string(sql_str)}}))
         try:
             self._db_transaction(sql_str, read=False)
