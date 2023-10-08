@@ -1,129 +1,131 @@
 {
+    "conversions": {
+        "default": [],
+        "schema": {
+            "maxlength": 3,
+            "minlength": 3,
+            "type": "list"
+        },
+        "type": "list"
+    },
+    "create_db": {
+        "check_with": "valid_create_db",
+        "default": false,
+        "meta": {
+            "description": "If the DB does not exist create it."
+        },
+        "type": "boolean"
+    },
+    "create_table": {
+        "check_with": "valid_create_table",
+        "default": false,
+        "meta": {
+            "description": "If the table does not exist create it."
+        },
+        "type": "boolean"
+    },
+    "data_file_folder": {
+        "check_with": "valid_file_folder",
+        "default": ".",
+        "maxlength": 1024,
+        "meta": {
+            "description": "Folder to find the data to populate the table on creation."
+        },
+        "minlength": 1,
+        "type": "string"
+    },
+    "data_files": {
+        "check_with": "valid_data_files",
+        "default": [],
+        "dependencies": [
+            "data_file_folder"
+        ],
+        "meta": {
+            "description": "Data files used to populate the table on creation."
+        },
+        "schema": {
+            "maxlength": 1024,
+            "minlength": 1,
+            "required": false,
+            "type": "string"
+        },
+        "type": "list"
+    },
     "database": {
-        "type": "dict",
-        "default": {},
         "check_with": "valid_database_config",
+        "default": {},
         "meta": {
             "description": "Definition of the database location and user to access the table."
+        },
+        "type": "dict"
+    },
+    "delete_db": {
+        "check_with": "valid_delete_db",
+        "default": false,
+        "meta": {
+            "description": "If the DB exists DROP it. Requires create DB to be True."
+        },
+        "type": "boolean"
+    },
+    "delete_table": {
+        "check_with": "valid_delete_table",
+        "default": false,
+        "meta": {
+            "description": "If the table exists DROP it. Requires create table to be True."
+        },
+        "type": "boolean"
+    },
+    "ptr_map": {
+        "check_with": "valid_ptr_map_config",
+        "default": {},
+        "meta": {
+            "description": "Defines relationships between fields for tables consisting of graph node rows."
+        },
+        "type": "dict"
+    },
+    "schema": {
+        "check_with": "valid_schema_config",
+        "keysrules": {
+            "maxlength": 63,
+            "minlength": 1,
+            "regex": "[a-zA-Z_][a-zA-Z0-9_-]*",
+            "type": "string"
+        },
+        "maxlength": 1600,
+        "meta": {
+            "description": "Table schema definition."
+        },
+        "minlength": 1,
+        "type": "dict",
+        "valuesrules": {
+            "check_with": "valid_raw_table_column_config",
+            "type": "dict"
         }
     },
     "table": {
-        "required": true,
-        "type": "string",
-        "minlength": 1,
         "maxlength": 63,
-        "regex": "[a-zA-Z_][a-zA-Z0-9_-]*",
         "meta": {
             "description": "The name of the table."
-        }
-    },
-    "schema": {
-        "type": "dict",
+        },
         "minlength": 1,
-        "maxlength": 1600,
-        "keysrules": {
-            "type": "string",
-            "minlength": 1,
-            "maxlength": 63,
-            "regex": "[a-zA-Z_][a-zA-Z0-9_-]*"
-        },
-        "valuesrules": {
-            "type": "dict",
-            "check_with": "valid_raw_table_column_config"
-        },
-        "check_with": "valid_schema_config",
-        "meta": {
-            "description": "Table schema definition."
-        }
-    },
-    "ptr_map": {
-        "type": "dict",
-        "default": {},
-        "check_with": "valid_ptr_map_config",
-        "meta": {
-            "description": "Defines relationships between fields for tables consisting of graph node rows."
-        }
-    },
-    "data_file_folder": {
-        "type": "string",
-        "minlength": 1,
-        "maxlength": 1024,
-        "check_with": "valid_file_folder",
-        "default": ".",
-        "meta": {
-            "description": "Folder to find the data to populate the table on creation."
-        }
-    },
-    "data_files": {
-        "type": "list",
-        "schema": {
-            "type": "string",
-            "minlength": 1,
-            "maxlength": 1024,
-            "required": false
-        },
-        "check_with": "valid_data_files",
-        "default": [],
-        "dependencies": ["data_file_folder"],
-        "meta": {
-            "description": "Data files used to populate the table on creation."
-        }
-    },
-    "delete_db": {
-        "type": "boolean",
-        "default": false,
-        "check_with": "valid_delete_db",
-        "meta": {
-            "description": "If the DB exists DROP it. Requires create DB to be True."
-        }
-    },
-    "delete_table": {
-        "type": "boolean",
-        "default": false,
-        "check_with": "valid_delete_table",
-        "meta": {
-            "description": "If the table exists DROP it. Requires create table to be True."
-        }
-    },
-    "create_db": {
-        "type": "boolean",
-        "default": false,
-        "check_with": "valid_create_db",
-        "meta": {
-            "description": "If the DB does not exist create it."
-        }
-    },
-    "create_table": {
-        "type": "boolean",
-        "default": false,
-        "check_with": "valid_create_table",
-        "meta": {
-            "description": "If the table does not exist create it."
-        }
+        "regex": "[a-zA-Z_][a-zA-Z0-9_-]*",
+        "required": true,
+        "type": "string"
     },
     "wait_for_db": {
-        "type": "boolean",
-        "default": false,
         "check_with": "valid_wait_for_db",
+        "default": false,
         "meta": {
             "description": "If the DB does not exist keep trying to connect until it does."
-        }
+        },
+        "type": "boolean"
     },
     "wait_for_table": {
-        "type": "boolean",
         "check_with": "valid_wait_for_table",
         "default": false,
         "meta": {
             "description": "If the table does not exist keep checking until it does."
-        }
-    },
-    "conversions": {
-        "type": "list",
-        "default": [],
-        "schema": {
-            "type": "list",
-            "minlength": 3,
-            "maxlength": 3
-        }
+        },
+        "type": "boolean"
     }
 }

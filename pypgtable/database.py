@@ -17,6 +17,7 @@ from threading import enumerate as thread_enumerate
 from threading import get_ident
 from time import sleep
 from typing import Any, Generator
+from pprint import pformat
 
 from text_token import register_token_code, text_token
 from obscure_password import unobscure
@@ -76,6 +77,7 @@ register_token_code("I04000", "Connected to postgresql database {dbname} with co
 register_token_code("I04001", "Database {dbname} with config {config} {exists} exist.")
 register_token_code("I04002", "Database {dbname} with config {config} created.")
 register_token_code("I04003", "Database {dbname} with config {config} deleted.")
+register_token_code("I04004", "Existing database connections:\n{conns}")
 
 
 def cursor_name_generator() -> Generator[str, Any, None]:
@@ -133,6 +135,7 @@ def db_connect(dbname, config):
 
 
 def _get_connection(dbname, host):
+    _logger.debug(text_token({"I04004": {"conns": pformat(_connections)}}))
     dbs = _connections.setdefault(host, {})
     threads = dbs.setdefault(dbname, {})
     return threads.setdefault(get_ident(), None)
@@ -305,7 +308,7 @@ def _connect_core(dbname, config):
         _logger.warning(text_token({"W04001": {"dbname": dbname, "config": config, "error": (err := exc)}}))
     else:
         err = None
-        _logger.info(text_token({"I04000": {"dbname": dbname, "config": config}}))
+        _logger.debug(text_token({"I04000": {"dbname": dbname, "config": config}}))
     finally:
         return connection, err  # pylint: disable=lost-exception
 
@@ -351,7 +354,7 @@ def db_exists(dbname, config):
             )
             return True
         raise exc
-    _logger.info(_DB_EXISTS_SQL.as_string(connection))
+    _logger.debug(_DB_EXISTS_SQL.as_string(connection))
     retval = (dbname,) in db_transaction(config["maintenance_db"], config, _DB_EXISTS_SQL)
     _logger.info(
         text_token(

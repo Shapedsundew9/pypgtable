@@ -38,6 +38,7 @@ register_token_code(
     "I05008",
     "Database {dbname} does not yet exist. Waiting {backoff:.2}s to retry.",
 )
+register_token_code("I05009", "Table instance configured with:\n{config}.")
 
 register_token_code("E05000", "Configuration error: See lines below.\n{error}")
 register_token_code(
@@ -153,6 +154,7 @@ class raw_table:
         self._primary_key = None
         self._entry_validator = None
         self.config = deepcopy(config)
+        _logger.debug(text_token({"I05009": {"config": pformat(self.config)}}))
         self._validate_config()
         self.creator = False
         self.db_creator = False
