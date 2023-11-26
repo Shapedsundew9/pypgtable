@@ -1,30 +1,20 @@
 """Unit tests for the database.py module."""
 
 from copy import deepcopy
-from logging import NullHandler, getLogger
+from itertools import count
+from logging import Logger, NullHandler, getLogger
 from threading import get_ident
 
 from psycopg2 import OperationalError, ProgrammingError, errors, sql
-from psycopg2.extensions import ISOLATION_LEVEL_DEFAULT, ISOLATION_LEVEL_REPEATABLE_READ
 
 from pypgtable import database
 from pypgtable.common import backoff_generator
-from pypgtable.database import (
-    _DB_TRANSACTION_ATTEMPTS,
-    _clean_connections,
-    _connect_core,
-    db_connect,
-    db_create,
-    db_delete,
-    db_disconnect,
-    db_disconnect_all,
-    db_exists,
-    db_reconnect,
-    db_transaction,
-)
-from itertools import count
+from pypgtable.database import (_clean_connections, _connect_core, db_connect,
+                                db_create, db_delete, db_disconnect,
+                                db_disconnect_all, db_exists, db_reconnect,
+                                db_transaction)
 
-_logger = getLogger(__name__)
+_logger: Logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
 
 
@@ -43,11 +33,12 @@ _MOCK_ERROR = 0
 _INFINITE_BACKOFFS = 100
 
 
-def test_connect_core_p0(monkeypatch):
+def test_connect_core_p0(monkeypatch) -> None:
     """Positive path for _connection_core()."""
     db_disconnect_all()
 
     class mock_connection:
+        """Mock connection class."""
         def __init__(self) -> None:
             self.value = _MOCK_VALUE_1
 
