@@ -498,7 +498,7 @@ class raw_table:
         columns: list[sql.Composed] = []
         self.columns: set[str] = set()
         definition_list = self._order_schema()
-        _logger.info("Table will be created with columns in the order logged below.")
+        _logger.debug("Table will be created with columns in the order logged below.")
         for column, definition in definition_list:
             _sql_str: str = " " + cast(str, definition["type"])
             if not definition["nullable"]:
@@ -510,11 +510,11 @@ class raw_table:
             if "default" in definition:
                 _sql_str += " DEFAULT " + definition["default"]
             self.columns.add(column)
-            _logger.info(f"Column: {column}, SQL Definition: {_sql_str}, Alignment: {definition['alignment']}")
+            _logger.debug(f"Column: {column}, SQL Definition: {_sql_str}, Alignment: {definition['alignment']}")
             columns.append(sql.Identifier(column) + sql.SQL(_sql_str))
 
         sql_str: sql.Composed = _TABLE_CREATE_SQL.format(self._table, sql.SQL(", ").join(columns))
-        _logger.info(text_token({"I05000": {"sql": self._sql_to_string(sql_str)}}))
+        _logger.debug(text_token({"I05000": {"sql": self._sql_to_string(sql_str)}}))
         try:
             self._db_transaction(sql_str, read=False)
         except ProgrammingError as exc:
@@ -546,7 +546,7 @@ class raw_table:
             )
             sql_str += sql.SQL(" USING ") + sql.Identifier(definition["index"])
             sql_str += _TABLE_INDEX_COLUMN_SQL.format(sql.Identifier(column))
-            _logger.info(text_token({"I05000": {"sql": self._sql_to_string(sql_str)}}))
+            _logger.debug(text_token({"I05000": {"sql": self._sql_to_string(sql_str)}}))
             self._db_transaction(sql_str, read=False)
 
     def delete_table(self) -> None:

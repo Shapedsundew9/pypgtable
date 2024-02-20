@@ -356,7 +356,7 @@ def db_exists(dbname, config):
         raise exc
     _logger.debug(_DB_EXISTS_SQL.as_string(connection))
     retval = (dbname,) in db_transaction(config["maintenance_db"], config, _DB_EXISTS_SQL)
-    _logger.info(
+    _logger.debug(
         text_token(
             {
                 "I04001": {
@@ -418,9 +418,9 @@ def db_delete(dbname, config):
     db_disconnect(dbname, config)
     connection = db_connect(config["maintenance_db"], config)
     connection.autocommit = True
-    _logger.info(sql_str.as_string(connection))
+    _logger.debug(sql_str.as_string(connection))
     db_transaction(config["maintenance_db"], config, sql_str, read=False, recons=1)
-    _logger.info(text_token({"I04003": {"dbname": dbname, "config": config}}))
+    _logger.debug(text_token({"I04003": {"dbname": dbname, "config": config}}))
     db_disconnect(config["maintenance_db"], config)
 
 
