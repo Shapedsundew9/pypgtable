@@ -10,7 +10,7 @@ of a single threaded process.
 
 
 from copy import deepcopy
-from logging import NullHandler, getLogger
+from logging import NullHandler, getLogger, DEBUG
 from random import choice
 from string import ascii_letters
 from threading import enumerate as thread_enumerate
@@ -37,6 +37,9 @@ from .common import backoff_generator
 _connections = {}
 _logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
+_LOG_DEBUG: bool = _logger.isEnabledFor(DEBUG)
+_LOG_DEEP_DEBUG: bool = _logger.isEnabledFor(DEBUG - 1)
+
 
 # psycopg2 registrations
 register_uuid()
@@ -480,6 +483,8 @@ def db_transaction(dbname, config, sql_str, read=True, recons=_DB_RECONNECTIONS,
                 cursor.itersize = _ITERSIZE
             else:
                 cursor = connection.cursor(cursor_factory=cursor_type)
+            if _LOG_DEEP_DEBUG:
+                _logger.debug(sql_str.as_string(connection))
             try:
                 cursor.execute(sql_str)
             except (InterfaceError, OperationalError) as exc:
