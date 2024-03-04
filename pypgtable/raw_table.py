@@ -250,7 +250,7 @@ class raw_table:
 
     def delete_db(self) -> None:
         """Delete the database."""
-        _logger.info(text_token({"I05006": {"dbname": self.config['database']['dbname']}}))
+        _logger.info(text_token({"I05006": {"dbname": self.config["database"]["dbname"]}}))
         db_delete(self.config["database"]["dbname"], self.config["database"])
 
     def _db_transaction(self, sql_str, read=True, ctype="tuple"):

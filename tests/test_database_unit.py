@@ -9,10 +9,18 @@ from psycopg2 import OperationalError, ProgrammingError, errors, sql
 
 from pypgtable import database
 from pypgtable.common import backoff_generator
-from pypgtable.database import (_clean_connections, _connect_core, db_connect,
-                                db_create, db_delete, db_disconnect,
-                                db_disconnect_all, db_exists, db_reconnect,
-                                db_transaction)
+from pypgtable.database import (
+    _clean_connections,
+    _connect_core,
+    db_connect,
+    db_create,
+    db_delete,
+    db_disconnect,
+    db_disconnect_all,
+    db_exists,
+    db_reconnect,
+    db_transaction,
+)
 
 _logger: Logger = getLogger(__name__)
 _logger.addHandler(NullHandler())
@@ -39,6 +47,7 @@ def test_connect_core_p0(monkeypatch) -> None:
 
     class mock_connection:
         """Mock connection class."""
+
         def __init__(self) -> None:
             self.value = _MOCK_VALUE_1
 
