@@ -1,4 +1,5 @@
 """Validators for pypgtable."""
+
 from copy import deepcopy
 from json import load
 from logging import Logger, NullHandler, getLogger

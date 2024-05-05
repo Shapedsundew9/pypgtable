@@ -1,4 +1,5 @@
 """pypgtable typing."""
+
 from typing import Any, Callable, LiteralString, NotRequired, TypedDict, Literal
 
 from .row_iterators import dict_iter, gen_iter, namedtuple_iter, tuple_iter

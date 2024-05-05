@@ -1,6 +1,5 @@
 """Common functions for database."""
 
-
 from random import random
 from typing import Any, Callable, Generator
 

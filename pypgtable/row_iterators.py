@@ -1,4 +1,5 @@
 """Row iterators."""
+
 from collections import namedtuple
 from logging import DEBUG, Logger, NullHandler, getLogger
 from typing import Any, Callable, Self, Iterable

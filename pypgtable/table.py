@@ -1,6 +1,5 @@
 """Application layer wrapper for raw_table."""
 
-
 from copy import deepcopy
 from json import load
 from logging import DEBUG, NullHandler, getLogger, Logger

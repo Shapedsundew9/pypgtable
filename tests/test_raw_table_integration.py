@@ -1,6 +1,5 @@
 """Unit tests for raw_table.py."""
 
-
 from copy import deepcopy
 from inspect import stack
 from itertools import count
